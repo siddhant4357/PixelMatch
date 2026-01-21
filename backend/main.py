@@ -280,13 +280,8 @@ async def reset_database(service: AdminService = Depends(get_admin_service)):
 
 
 # Startup Event to Pre-Load Models
-@app.on_event("startup")
-async def startup_event():
-    print("Pre-warming AI models...")
-    # Force initialization of services to load models into memory
-    get_admin_service()
-    get_guest_service()
-    print("System verified and ready.")
+# Startup Event removed to prevent OOM on free tier
+# Models will be loaded lazily on first request
 
 if __name__ == "__main__":
     import uvicorn
