@@ -5,9 +5,9 @@ python-multipart==0.0.6
 
 # Face Detection & Recognition (DeepFace with Kwikpic Stack)
 opencv-python
-deepface==0.0.92
-tf-keras==2.18.0
-retina-face==0.0.17
+deepface
+tf-keras
+retina-face
 
 # Vector Search (FAISS)
 faiss-cpu
