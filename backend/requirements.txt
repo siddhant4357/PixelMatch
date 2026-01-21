@@ -10,7 +10,7 @@ tf-keras==2.18.0
 retina-face==0.0.17
 
 # Vector Search (FAISS)
-faiss-cpu==1.7.4
+faiss-cpu
 
 # Image Processing
 Pillow==10.2.0
