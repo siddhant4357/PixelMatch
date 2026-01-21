@@ -27,10 +27,16 @@ class FaceNet:
     
     def __init__(self):
         """Initialize both models and pre-load them to memory."""
-        # Corrected model names (Facenet512 instead of FaceNet512)
-        self.models = ["ArcFace", "Facenet512"]
-        # Weights for weighted concatenation
-        self.weights = [0.7, 0.3] 
+        """Initialize both models and pre-load them to memory."""
+        # Configurable Ensemble
+        if config.ENABLE_ENSEMBLE:
+            self.models = ["ArcFace", "Facenet512"]
+            self.weights = [0.7, 0.3]
+        else:
+            self.models = ["Facenet512"]
+            self.weights = [1.0]
+
+        self.input_size = (160, 160) 
         self.input_size = (160, 160)
         
         self.loaded_models = {}
