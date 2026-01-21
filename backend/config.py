@@ -42,8 +42,12 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "face_embeddings")
 FACE_SIZE = 160  # Standard face image size for preprocessing
 MIN_FACE_CONFIDENCE = float(os.getenv("MIN_FACE_CONFIDENCE", 0.5))
 # Super-Ensemble Settings
-ENABLE_ENSEMBLE = True
-EMBEDDING_DIM = 1024  # ArcFace (512) + FaceNet512 (512)
+# Super-Ensemble Settings
+ENABLE_ENSEMBLE = os.getenv("ENABLE_ENSEMBLE", "false").lower() == "true"
+if ENABLE_ENSEMBLE:
+    EMBEDDING_DIM = 1024  # ArcFace (512) + FaceNet512 (512)
+else:
+    EMBEDDING_DIM = 512  # FaceNet512 only
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.55))  # Read from .env
 MAX_FACES_PER_IMAGE = 50  # Maximum number of faces to detect per image
 
