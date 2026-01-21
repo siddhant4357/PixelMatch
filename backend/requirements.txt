@@ -4,7 +4,7 @@ uvicorn[standard]==0.27.0
 python-multipart==0.0.6
 
 # Face Detection & Recognition (DeepFace with Kwikpic Stack)
-opencv-python==4.9.0.80
+opencv-python
 deepface==0.0.92
 tf-keras==2.18.0
 retina-face==0.0.17
@@ -14,7 +14,7 @@ faiss-cpu
 
 # Image Processing
 Pillow
-numpy==1.24.3
+numpy
 
 # Utilities
 python-dotenv==1.0.0
