@@ -1,0 +1,48 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Data directories - Photos only (allow FAISS index)
+data/uploads/*.jpg
+data/uploads/*.jpeg
+data/uploads/*.png
+data/uploads/*.webp
+data/selfies/*
+data/lfw/*
+temp_drive_downloads/
+!data/uploads/.gitkeep
+!data/selfies/.gitkeep
+
+# Models (large files - will download on startup)
+data/models/*.h5
+data/models/*.pb
+data/models/*.pth
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
