@@ -24,6 +24,7 @@ class DriveService:
     async def process_drive_link(self, url: str, task_id: str):
         """
         Background task: Download -> Move -> Process.
+        Handles both individual files and folders.
         """
         tasks[task_id] = {"status": "downloading", "progress": "0%", "message": "Downloading from Drive..."}
         
@@ -31,23 +32,75 @@ class DriveService:
         task_dir.mkdir(exist_ok=True)
         
         try:
-            # 1. Download Folder
-            print(f"[DRIVE] Downloading Drive folder: {url}")
-            # gdown.download_folder returns list of files
-            # Set quiet=True to suppress per-file download messages
-            files = gdown.download_folder(url, output=str(task_dir), quiet=True, use_cookies=False)
+            # Determine if URL is a file or folder
+            is_folder = 'folders' in url or '/drive/folders/' in url
             
-            if not files:
-                 print(f"[DRIVE] ERROR: No files found or download failed")
-                 tasks[task_id] = {"status": "failed", "error": "No files found or download failed (Check if link is Public)."}
-                 return
-
-            print(f"[DRIVE] Downloaded {len(files)} files successfully")
+            if is_folder:
+                # 1a. Download Folder
+                print(f"[DRIVE] Downloading Drive folder: {url}")
+                # gdown.download_folder returns list of files
+                # Use fuzzy=True to handle permission issues better
+                # Use remaining_ok=True to continue even if some files fail
+                try:
+                    files = gdown.download_folder(
+                        url, 
+                        output=str(task_dir), 
+                        quiet=False,  # Show progress for debugging
+                        use_cookies=False,
+                        remaining_ok=True  # Continue even if some files fail
+                    )
+                except Exception as e:
+                    print(f"[DRIVE] ERROR during folder download: {str(e)}")
+                    # Try to salvage any files that were downloaded
+                    files = []
+                    if task_dir.exists():
+                        files = [str(f) for f in task_dir.rglob('*') if f.is_file()]
+                    
+                    if not files:
+                        tasks[task_id] = {
+                            "status": "failed", 
+                            "error": f"Failed to download folder. Error: {str(e)}. Make sure folder is shared as 'Anyone with the link'."
+                        }
+                        return
+                
+                if not files:
+                    print(f"[DRIVE] ERROR: No files found or download failed")
+                    tasks[task_id] = {"status": "failed", "error": "No files found or download failed. Make sure the folder is shared as 'Anyone with the link'."}
+                    return
+                
+                print(f"[DRIVE] Downloaded {len(files)} files successfully")
+            else:
+                # 1b. Download Single File
+                print(f"[DRIVE] Downloading single file from Drive: {url}")
+                
+                # Extract file ID from various URL formats
+                file_id = None
+                if '/file/d/' in url:
+                    file_id = url.split('/file/d/')[1].split('/')[0]
+                elif 'id=' in url:
+                    file_id = url.split('id=')[1].split('&')[0]
+                elif '/uc?id=' in url:
+                    file_id = url.split('id=')[1].split('&')[0]
+                
+                if not file_id:
+                    tasks[task_id] = {"status": "failed", "error": "Invalid Google Drive URL. Please use a valid file or folder link."}
+                    return
+                
+                # Download the file
+                output_path = task_dir / "downloaded_file"
+                try:
+                    gdown.download(id=file_id, output=str(output_path), quiet=False)
+                    files = [str(output_path)]
+                    print(f"[DRIVE] Downloaded file successfully")
+                except Exception as e:
+                    print(f"[DRIVE] ERROR: Failed to download file: {str(e)}")
+                    tasks[task_id] = {"status": "failed", "error": f"Failed to download file. Make sure the file is shared as 'Anyone with the link'. Error: {str(e)}"}
+                    return
+            
             tasks[task_id]["status"] = "processing"
-            tasks[task_id]["message"] = f"Downloaded {len(files)} files. Processing AI..."
+            tasks[task_id]["message"] = f"Downloaded {len(files)} file(s). Processing AI..."
             
-            # 2. Move files to main Uploads dir? 
-            # Or just process them from temp and move valid ones?
+            # 2. Move files to main Uploads dir
             # Let's move valid images to config.UPLOAD_DIR to keep them permanent
             valid_images = []
             for f in files:
@@ -64,11 +117,12 @@ class DriveService:
                     print(f"[DRIVE] Moved {path.name} -> {target.name}")
             
             # Cleanup temp
-            shutil.rmtree(task_dir)
+            if task_dir.exists():
+                shutil.rmtree(task_dir)
             
             if not valid_images:
-                print(f"[DRIVE] ERROR: No valid images found in folder")
-                tasks[task_id] = {"status": "failed", "error": "No valid images found in folder."}
+                print(f"[DRIVE] ERROR: No valid images found")
+                tasks[task_id] = {"status": "failed", "error": "No valid images found. Supported formats: JPG, PNG, BMP, WEBP"}
                 return
             
             print(f"[DRIVE] Starting face recognition processing for {len(valid_images)} images")
