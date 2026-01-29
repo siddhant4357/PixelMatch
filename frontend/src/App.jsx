@@ -5,6 +5,7 @@ import KeepAlive from './components/KeepAlive'
 import Home from './pages/Home'
 import Admin from './pages/Admin'
 import Guest from './pages/Guest'
+import AskAI from './pages/AskAI'
 
 const App = () => {
   return (
@@ -17,6 +18,7 @@ const App = () => {
             <Route path="/" element={<Home />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/guest" element={<Guest />} />
+            <Route path="/guest/ask-ai" element={<AskAI />} />
           </Routes>
         </main>
       </div>

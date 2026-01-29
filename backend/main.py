@@ -13,6 +13,7 @@ from pathlib import Path
 
 from services.admin_service import get_admin_service, AdminService
 from services.guest_service import get_guest_service
+from services.ai_search_service import get_ai_search_service
 import config
 
 # Create FastAPI app
@@ -277,6 +278,140 @@ async def reset_database(service: AdminService = Depends(get_admin_service)):
         raise HTTPException(status_code=500, detail=result.get('error', 'Reset failed'))
     
     return result
+
+
+# --- AI Search Routes ---
+
+from pydantic import BaseModel
+
+class AIQueryRequest(BaseModel):
+    session_id: str
+    query: str
+
+
+@app.post("/guest/ai-search/upload-selfie")
+async def ai_search_upload_selfie(selfie: UploadFile = File(...)):
+    """
+    AI Search: Upload selfie and create search session.
+    
+    Returns session_id for subsequent queries.
+    """
+    # Validate file type
+    if not config.is_allowed_file(selfie.filename):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed: {config.ALLOWED_EXTENSIONS}"
+        )
+    
+    # Read file bytes
+    selfie_bytes = await selfie.read()
+    
+    # Check file size
+    if len(selfie_bytes) > config.MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds maximum size of {config.MAX_UPLOAD_SIZE_MB}MB"
+        )
+    
+    # Validate and extract face embedding
+    guest_service = get_guest_service()
+    validation = guest_service.validate_selfie(selfie_bytes)
+    
+    if not validation['valid']:
+        raise HTTPException(
+            status_code=400,
+            detail=validation.get('error', 'No face detected in selfie')
+        )
+    
+    # Generate embedding
+    from utils.image_processing import load_image_from_bytes, crop_face, preprocess_face
+    from models.face_recognition import get_facenet_model
+    
+    image = load_image_from_bytes(selfie_bytes)
+    faces = guest_service.face_detector.detect_faces(image)
+    
+    if not faces:
+        raise HTTPException(status_code=400, detail="No face detected in selfie")
+    
+    # Use first face
+    bbox, confidence = faces[0]
+    face_img = crop_face(image, bbox)
+    preprocessed = preprocess_face(face_img, config.FACE_SIZE)
+    
+    facenet = get_facenet_model()
+    embedding = facenet.generate_embedding(preprocessed, enable_tta=True)
+    
+    if embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to generate face embedding")
+    
+    # Create session
+    ai_service = get_ai_search_service()
+    session_id = ai_service.create_session(
+        face_embedding=embedding.tolist(),
+        selfie_filename=selfie.filename
+    )
+    
+    return {
+        'success': True,
+        'session_id': session_id,
+        'message': 'Selfie processed successfully! You can now ask me about your photos.',
+        'face_detected': True
+    }
+
+
+@app.post("/guest/ai-search/query")
+async def ai_search_query(request: AIQueryRequest):
+    """
+    AI Search: Process natural language query and search photos.
+    
+    Combines face recognition + metadata search with AI understanding.
+    """
+    ai_service = get_ai_search_service()
+    
+    result = ai_service.search_photos(
+        session_id=request.session_id,
+        user_query=request.query
+    )
+    
+    if not result['success']:
+        raise HTTPException(status_code=400, detail=result.get('error', 'Search failed'))
+    
+    return result
+
+
+@app.get("/guest/ai-search/locations")
+async def get_available_locations():
+    """
+    Get all available photo locations for AI context.
+    """
+    from models.location_db import get_location_db
+    
+    location_db = get_location_db()
+    locations = location_db.get_all_locations()
+    
+    return {
+        'success': True,
+        'locations': locations,
+        'count': len(locations)
+    }
+
+
+@app.get("/admin/stats/metadata")
+async def get_metadata_stats():
+    """
+    Get metadata statistics (locations, dates, etc.)
+    """
+    from models.location_db import get_location_db
+    
+    location_db = get_location_db()
+    stats = location_db.get_stats()
+    locations = location_db.get_all_locations()
+    
+    return {
+        'success': True,
+        'stats': stats,
+        'locations': locations[:10]  # Top 10 locations
+    }
 
 
 # Startup Event to Pre-Load Models

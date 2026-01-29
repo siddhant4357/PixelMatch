@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Search, Upload, AlertCircle, Sliders, Download } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Search, Upload, AlertCircle, Sliders, Download, Sparkles } from 'lucide-react'
 import { searchPhotosBySelfie, getPhotoUrl } from '../services/api'
 
 const Guest = () => {
@@ -48,7 +49,16 @@ const Guest = () => {
       {/* Header */}
       <div className="text-center mb-12">
         <h1 className="text-5xl font-bold text-white mb-4">Find My Photos</h1>
-        <p className="text-xl text-slate-300">Upload your selfie to find all photos you appear in</p>
+        <p className="text-xl text-slate-300 mb-6">Upload your selfie to find all photos you appear in</p>
+
+        {/* Ask AI Button */}
+        <Link
+          to="/guest/ask-ai"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-500 hover:to-pink-500 transition-all shadow-lg hover:shadow-xl"
+        >
+          <Sparkles className="w-5 h-5" />
+          <span>Try Ask AI - Search with Natural Language!</span>
+        </Link>
       </div>
 
       {/* Upload Section */}
