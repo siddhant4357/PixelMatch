@@ -102,3 +102,53 @@ export const healthCheck = async () => {
 
   return response.json()
 }
+
+// AI Search API - Upload selfie for AI search
+export const uploadSelfieForAI = async (selfieFile) => {
+  const formData = new FormData()
+  formData.append('selfie', selfieFile)
+
+  const response = await fetch(`${API_BASE_URL}/guest/ai-search/upload-selfie`, {
+    method: 'POST',
+    body: formData
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Selfie upload failed')
+  }
+
+  return response.json()
+}
+
+// AI Search API - Query with natural language
+export const queryAI = async (sessionId, query) => {
+  const response = await fetch(`${API_BASE_URL}/guest/ai-search/query`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      session_id: sessionId,
+      query: query
+    })
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'AI query failed')
+  }
+
+  return response.json()
+}
+
+// AI Search API - Get available locations
+export const getAvailableLocations = async () => {
+  const response = await fetch(`${API_BASE_URL}/guest/ai-search/locations`)
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch locations')
+  }
+
+  return response.json()
+}

@@ -12,12 +12,14 @@ from concurrent.futures import ThreadPoolExecutor
 from models.face_detection import FaceDetector
 from models.face_recognition import get_facenet_model
 from models.vector_db import get_vector_db
+from models.location_db import get_location_db
 from utils.image_processing import (
     load_image,
     crop_face,
     preprocess_face,
     save_image
 )
+from utils.exif_extractor import EXIFExtractor
 import config
 
 
@@ -29,6 +31,7 @@ class AdminService:
         self.face_detector = FaceDetector()
         self.face_recognizer = get_facenet_model()
         self.vector_db = get_vector_db()
+        self.location_db = get_location_db()
         self.executor = ThreadPoolExecutor(max_workers=4)
     
     async def process_bulk_upload(
@@ -200,6 +203,36 @@ class AdminService:
                     'success': False,
                     'error': f'Failed to store embeddings: {str(e)}'
                 }
+        
+        # Extract and store location metadata
+        try:
+            metadata = EXIFExtractor.extract_metadata(str(photo_path))
+            if metadata['has_location']:
+                # Try reverse geocoding (optional, may fail due to rate limits)
+                try:
+                    if metadata['latitude'] and metadata['longitude']:
+                        location_name = EXIFExtractor.reverse_geocode(
+                            metadata['latitude'],
+                            metadata['longitude']
+                        )
+                        if location_name:
+                            metadata['location_name'] = location_name
+                            print(f"[ADMIN] ✓ Reverse geocoded to: {location_name}")
+                        else:
+                            print(f"[ADMIN] ℹ️  GPS found but reverse geocoding unavailable (API limit)")
+                except Exception as geocode_error:
+                    print(f"[ADMIN] ℹ️  Reverse geocoding skipped: {geocode_error}")
+                    # Continue without location name - GPS coordinates are still stored
+                
+                self.location_db.add_location(str(photo_path), metadata)
+                coords_str = f"{metadata['latitude']:.4f}, {metadata['longitude']:.4f}"
+                location_display = metadata.get('location_name') or coords_str
+                print(f"[ADMIN] ✓ Stored location metadata for {filename}: {location_display}")
+            else:
+                print(f"[ADMIN] No GPS data found in {filename}")
+        except Exception as e:
+            print(f"[ADMIN] WARNING: Failed to extract metadata for {filename}: {e}")
+
         
         return {
             'filename': filename,
