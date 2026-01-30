@@ -4,6 +4,14 @@
 
 Perfect for events, weddings, conferences, and gatherings with thousands of photos. Upload a selfie, ask questions like *"Show my photos from Paris in January"*, and get instant results.
 
+<div align="center">
+
+![PixelMatch Homepage](./assets/homepage.png)
+
+**⚡ Powered by AI • Built for Scale • Designed for Privacy ⚡**
+
+</div>
+
 ---
 
 ## 🎯 System Overview
@@ -15,6 +23,22 @@ PixelMatch is a sophisticated AI-powered photo search platform that combines:
 - **📍 Intelligent Location Extraction**: Offline reverse geocoding from GPS metadata
 - **⚡ Lightning-Fast Vector Search**: FAISS-powered sub-millisecond similarity matching
 - **🔒 Privacy-First Design**: Guests only see photos they appear in
+
+---
+
+## 🖼️ Screenshots
+
+### Landing Page
+![Homepage](./assets/homepage.png)
+*Modern, minimalist landing page with glassmorphic design and purple/pink gradients*
+
+### Admin Panel
+![Admin Panel](./assets/adminpage.png)
+*Powerful admin interface for photo import, Google Drive integration, and database management*
+
+### AI-Powered Search
+![Ask AI Page](./assets/askAipage.png)
+*Conversational AI search - ask questions in natural language and get instant results*
 
 ---
 
@@ -124,12 +148,13 @@ The AI understands context, extracts location/date/keywords, and returns relevan
 - Location-based search filtering
 - No external API calls required
 
-### 📱 Mobile-Friendly Interface
+### 🎨 Premium User Experience
 
-- Responsive design for phones and tablets
-- Instant selfie upload and search
-- Touch-optimized photo gallery
-- Progressive Web App (PWA) ready
+- **Glassmorphic Design**: Modern, airy interface with warm cream/beige gradients
+- **Smooth Animations**: 60fps animations with purple/pink gradient accents
+- **Premium Loading States**: Engaging loading animations with helpful tips
+- **Success Notifications**: Beautiful modal popups for completed operations
+- **Responsive Design**: Works perfectly on phones, tablets, and desktops
 
 ### 🔒 Privacy & Security
 
@@ -355,10 +380,11 @@ VITE_API_URL=http://localhost:8000
 ### Frontend
 
 - **Framework**: React 18 + Vite
-- **Styling**: Tailwind CSS
+- **Styling**: Tailwind CSS (Glassmorphic Design)
 - **HTTP Client**: Axios
 - **Routing**: React Router v6
-- **UI Components**: Custom React components
+- **UI Components**: Custom React components with premium animations
+- **Icons**: Lucide React
 
 ### AI/ML Models
 
@@ -374,7 +400,10 @@ VITE_API_URL=http://localhost:8000
 ```
 PixelMatch/
 ├── assets/
-│   └── architecture.png         # System architecture diagram
+│   ├── architecture.png         # System architecture diagram
+│   ├── homepage.png             # Landing page screenshot
+│   ├── adminpage.png            # Admin panel screenshot
+│   └── askAipage.png            # AI search screenshot
 ├── backend/
 │   ├── models/                  # AI models
 │   │   ├── face_recognition.py  # Super-Ensemble (ArcFace + FaceNet512)
@@ -405,6 +434,9 @@ PixelMatch/
 │   │   │   ├── Guest.jsx        # Guest search (selfie upload)
 │   │   │   └── AskAI.jsx        # AI conversational search
 │   │   ├── components/          # Reusable UI components
+│   │   │   ├── LoadingSpinner.jsx    # Premium loading animation
+│   │   │   ├── ProgressLoader.jsx    # Progress bar with shimmer
+│   │   │   └── SuccessModal.jsx      # Success notification popup
 │   │   └── App.jsx              # Main app component
 │   ├── public/                  # Static assets
 │   └── package.json             # Node dependencies
@@ -521,22 +553,22 @@ This creates a **1024-dimensional Super-Vector** that combines the strengths of 
 ```
 POST /admin/import-drive        # Import photos from Google Drive
 GET  /admin/stats                # Get database statistics
-POST /admin/process-photo        # Process single photo
+POST /admin/reset-database       # Reset all photos and faces
+GET  /admin/task-status/{id}     # Get import task status
 ```
 
 #### Guest Endpoints
 
 ```
-POST /guest/upload-selfie        # Upload selfie and search
+POST /guest/search-by-selfie     # Upload selfie and search
 GET  /guest/photo/{filename}     # Retrieve photo
 ```
 
 #### AI Search Endpoints
 
 ```
-POST /ai-search/create-session   # Create AI search session
+POST /ai-search/upload-selfie    # Create AI search session
 POST /ai-search/query            # Natural language query
-GET  /ai-search/session/{id}     # Get session info
 ```
 
 #### System Endpoints
@@ -601,6 +633,7 @@ This project demonstrates advanced concepts in:
 - **Vector Databases**: High-dimensional similarity search
 - **System Architecture**: Scalable microservices design
 - **Full-Stack Development**: React + FastAPI integration
+- **UI/UX Design**: Glassmorphic design with premium animations
 
 **Perfect for**: Academic projects, portfolio demonstrations, real-world event management
 
@@ -611,5 +644,7 @@ This project demonstrates advanced concepts in:
 **🎉 Made with ❤️ for events, weddings, and photo enthusiasts 🎉**
 
 **⚡ Powered by AI • Built for Scale • Designed for Privacy ⚡**
+
+![Homepage Preview](./assets/homepage.png)
 
 </div>
