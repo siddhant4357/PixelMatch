@@ -10,7 +10,7 @@ import AskAI from './pages/AskAI'
 const App = () => {
   return (
     <Router>
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <div className="min-h-screen bg-gradient-to-br from-[#FFF5E6] via-[#FFE8D6] to-[#FFF0E0]">
         <Navbar />
         <KeepAlive />
         <main>
