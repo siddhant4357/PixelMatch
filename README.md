@@ -28,10 +28,6 @@ PixelMatch is a sophisticated AI-powered photo search platform that combines:
 
 ## 🖼️ Screenshots
 
-### Landing Page
-![Homepage](./assets/homepage.png)
-*Modern, minimalist landing page with glassmorphic design and purple/pink gradients*
-
 ### Admin Panel
 ![Admin Panel](./assets/adminpage.png)
 *Powerful admin interface for photo import, Google Drive integration, and database management*
