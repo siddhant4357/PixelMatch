@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { Upload, Image as ImageIcon, AlertCircle, CheckCircle, Database, Trash2 } from 'lucide-react'
 import { uploadBulkPhotos, getStats, resetDatabase } from '../services/api'
+import LoadingSpinner from '../components/LoadingSpinner'
+import ProgressLoader from '../components/ProgressLoader'
+import SuccessModal from '../components/SuccessModal'
 
 const Admin = () => {
     const [selectedFiles, setSelectedFiles] = useState([])
     const [uploading, setUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState(0)
+    const [uploadCurrent, setUploadCurrent] = useState(0)
     const [result, setResult] = useState(null)
     const [error, setError] = useState(null)
     const [stats, setStats] = useState(null)
@@ -14,6 +19,7 @@ const Admin = () => {
     const [driveUrl, setDriveUrl] = useState('');
     const [taskId, setTaskId] = useState(null);
     const [driveStatus, setDriveStatus] = useState(null);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     useEffect(() => {
         loadStats();
@@ -38,10 +44,10 @@ const Admin = () => {
                         clearInterval(interval);
                         loadStats(); // Update stats on valid completion
 
-                        // Only show alert once per task
+                        // Only show modal once per task
                         if (data.status === 'completed' && !alertShownRef.current) {
                             alertShownRef.current = true;
-                            alert("Drive Import Complete!");
+                            setShowSuccessModal(true);
                         }
                     }
                 } catch (e) {
@@ -160,95 +166,122 @@ const Admin = () => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* Drive Import Section */}
-            <div className="bg-white rounded-lg shadow p-6 mb-8 border border-blue-100">
-                <h2 className="text-xl font-semibold mb-4 text-slate-800">☁️ Import from Google Drive</h2>
-                <div className="flex gap-4">
-                    <input
-                        type="text"
-                        placeholder="Paste Public Drive Folder Link..."
-                        className="flex-1 border p-2 rounded"
-                        value={driveUrl}
-                        onChange={(e) => setDriveUrl(e.target.value)}
-                    />
-                    <button
-                        onClick={handleDriveImport}
-                        disabled={!!taskId && driveStatus?.status !== 'completed' && driveStatus?.status !== 'failed'}
-                        className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {taskId && driveStatus?.status !== 'completed' && driveStatus?.status !== 'failed' ? 'Processing...' : 'Start Import'}
-                    </button>
-                </div>
+        <div className="min-h-screen">
+            {/* Premium Loading Overlay for Uploads */}
+            {uploading && (
+                <LoadingSpinner
+                    message="Processing Your Photos"
+                    tips={[
+                        "💡 Our AI is detecting faces in your photos!",
+                        "✨ Building searchable face embeddings...",
+                        "🎯 Processing images with advanced AI...",
+                        "🚀 Almost done! Indexing faces for fast search...",
+                        "💜 Your photos will be ready in moments!"
+                    ]}
+                    fullScreen={true}
+                />
+            )}
 
-                {driveStatus && (
-                    <div className="mt-4 p-4 bg-slate-50 rounded">
-                        <div className="flex justify-between mb-2">
-                            <span className="font-medium capitalize">{driveStatus.status}</span>
-                            <span>{driveStatus.progress}</span>
-                        </div>
-                        <div className="text-sm text-slate-500">{driveStatus.message || driveStatus.error}</div>
-                        {driveStatus.status === 'processing' && (
-                            <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                                <div
-                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
-                                    style={{ width: driveStatus.progress && driveStatus.progress.includes('%') ? driveStatus.progress : '10%' }}
-                                ></div>
-                            </div>
-                        )}
+            {/* Success Modal for Drive Import */}
+            <SuccessModal
+                isOpen={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                title="Drive Import Complete!"
+                message="🎉 All photos have been successfully imported from Google Drive and are ready to search!"
+                autoClose={true}
+                autoCloseDelay={5000}
+            />
+
+            <div className="max-w-7xl mx-auto px-6 py-12">
+                {/* Drive Import Section */}
+                <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl shadow-lg p-8 mb-8">
+                    <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">☁️ Import from Google Drive</h2>
+                    <div className="flex gap-4">
+                        <input
+                            type="text"
+                            placeholder="Paste Public Drive Folder Link..."
+                            className="flex-1 border border-purple-200 bg-white/50 p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-700"
+                            value={driveUrl}
+                            onChange={(e) => setDriveUrl(e.target.value)}
+                        />
+                        <button
+                            onClick={handleDriveImport}
+                            disabled={!!taskId && driveStatus?.status !== 'completed' && driveStatus?.status !== 'failed'}
+                            className="bg-gradient-to-r from-purple-400 to-pink-400 text-white px-8 py-3 rounded-xl hover:scale-105 transition-transform disabled:opacity-50 font-semibold shadow-md"
+                        >
+                            {taskId && driveStatus?.status !== 'completed' && driveStatus?.status !== 'failed' ? 'Processing...' : 'Start Import'}
+                        </button>
                     </div>
-                )}
-            </div>
 
-            <div className="bg-white rounded-lg shadow-xl overflow-hidden min-h-[500px] flex flex-col">
-                <div className="p-8 border-b border-slate-100">
-                    <h1 className="text-3xl font-bold text-slate-900">Upload Event Photos</h1>
-                    <p className="mt-2 text-slate-500">Drag and drop photos or select files</p>
+                    {driveStatus && (
+                        <div className="mt-6">
+                            <ProgressLoader
+                                progress={driveStatus.progress && driveStatus.progress.includes('%') ? parseInt(driveStatus.progress) : 10}
+                                total={100}
+                                message={
+                                    driveStatus.status === 'starting' ? '☁️ Starting Drive Import...' :
+                                        driveStatus.status === 'processing' ? '☁️ Importing from Google Drive' :
+                                            driveStatus.status === 'completed' ? '✅ Import Complete!' :
+                                                driveStatus.status === 'failed' ? '❌ Import Failed' :
+                                                    '☁️ Processing...'
+                                }
+                                status={driveStatus.status}
+                                showPercentage={true}
+                                showCount={false}
+                            />
+                            {driveStatus.message && driveStatus.status !== 'failed' && (
+                                <p className="text-sm text-slate-600 mt-3 text-center">{driveStatus.message}</p>
+                            )}
+                            {driveStatus.error && (
+                                <p className="text-sm text-red-600 mt-3 text-center font-medium">{driveStatus.error}</p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                {/* The original content of the return statement starts here, but with a new outer div */}
                 {/* Header */}
                 <div className="text-center mb-12">
-                    <h1 className="text-5xl font-bold text-white mb-4">Admin Panel</h1>
-                    <p className="text-xl text-slate-300">Upload bulk photos to build the face database</p>
+                    <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">Admin Panel</h1>
+                    <p className="text-xl text-slate-600">Upload bulk photos to build the face database</p>
                 </div>
 
                 {/* Stats */}
                 {stats && (
                     <>
                         <div className="grid md:grid-cols-2 gap-6 mb-8">
-                            <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-2xl p-6 text-white">
-                                <Database className="w-8 h-8 mb-2 opacity-80" />
-                                <div className="text-4xl font-bold mb-1">{stats.total_photos}</div>
-                                <div className="text-indigo-200">Total Photos</div>
+                            <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl p-8 shadow-lg">
+                                <Database className="w-10 h-10 mb-3 text-purple-600" />
+                                <div className="text-5xl font-bold mb-2 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">{stats.total_photos}</div>
+                                <div className="text-slate-600 font-medium">Total Photos</div>
                             </div>
-                            <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-2xl p-6 text-white">
-                                <ImageIcon className="w-8 h-8 mb-2 opacity-80" />
-                                <div className="text-4xl font-bold mb-1">{stats.total_faces}</div>
-                                <div className="text-purple-200">Total Faces Indexed</div>
+                            <div className="bg-white/60 backdrop-blur-md border border-pink-200/50 rounded-2xl p-8 shadow-lg">
+                                <ImageIcon className="w-10 h-10 mb-3 text-pink-600" />
+                                <div className="text-5xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">{stats.total_faces}</div>
+                                <div className="text-slate-600 font-medium">Total Faces Indexed</div>
                             </div>
-                        </div>
-
-                        {/* Reset Database Button */}
-                        <div className="mb-8">
-                            <button
-                                onClick={handleResetDatabase}
-                                disabled={uploading || stats.total_faces === 0}
-                                className="w-full px-6 py-4 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2 border-2 border-red-500"
-                            >
-                                <Trash2 className="w-5 h-5" />
-                                <span>🗑️ Reset Database (Delete All Photos & Faces)</span>
-                            </button>
-                            <p className="text-center text-slate-400 text-sm mt-2">
-                                ⚠️ Use this after your event to clean up for the next event
-                            </p>
                         </div>
                     </>
                 )}
 
+                {/* Reset Database Button */}
+                <div className="mb-8">
+                    <button
+                        onClick={handleResetDatabase}
+                        disabled={uploading || !stats || stats.total_faces === 0}
+                        className="w-full px-6 py-4 bg-red-500 text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2 shadow-lg"
+                    >
+                        <Trash2 className="w-5 h-5" />
+                        <span>🗑️ Reset Database (Delete All Photos & Faces)</span>
+                    </button>
+                    <p className="text-center text-slate-600 text-sm mt-3">
+                        ⚠️ Use this after your event to clean up for the next event
+                    </p>
+                </div>
+
+
                 {/* Upload Section */}
-                <div className="bg-slate-800/50 backdrop-blur-lg border border-slate-700 rounded-2xl p-8 mb-8">
-                    <h2 className="text-2xl font-bold text-white mb-6">Upload Photos</h2>
+                <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl p-8 mb-8 shadow-lg">
+                    <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Upload Photos</h2>
 
                     {/* Drag & Drop Area */}
                     <div
@@ -257,8 +290,8 @@ const Admin = () => {
                         onDragOver={handleDrag}
                         onDrop={handleDrop}
                         className={`border-2 border-dashed rounded-xl p-12 text-center transition-all ${dragActive
-                            ? 'border-indigo-500 bg-indigo-500/10'
-                            : 'border-slate-600 hover:border-slate-500'
+                            ? 'border-purple-400 bg-purple-100/50'
+                            : 'border-purple-200 hover:border-purple-300 bg-purple-50/30'
                             }`}
                     >
                         <input
@@ -271,11 +304,11 @@ const Admin = () => {
                         />
 
                         <label htmlFor="fileInput" className="cursor-pointer">
-                            <Upload className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                            <div className="text-xl font-semibold text-white mb-2">
+                            <Upload className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+                            <div className="text-xl font-semibold text-slate-800 mb-2">
                                 Click to select photos or drag & drop
                             </div>
-                            <div className="text-slate-400">
+                            <div className="text-slate-600">
                                 Supports JPG, PNG, BMP, WEBP
                             </div>
                         </label>
@@ -283,18 +316,18 @@ const Admin = () => {
 
                     {/* Selected Files */}
                     {selectedFiles.length > 0 && (
-                        <div className="mt-6 bg-slate-900/50 rounded-lg p-4">
-                            <div className="text-white font-semibold mb-2">
+                        <div className="mt-6 bg-purple-50/50 backdrop-blur-sm rounded-xl p-5 border border-purple-100">
+                            <div className="text-slate-800 font-semibold mb-3">
                                 {selectedFiles.length} file(s) selected
                             </div>
                             <div className="max-h-40 overflow-y-auto space-y-1">
                                 {selectedFiles.slice(0, 10).map((file, index) => (
-                                    <div key={index} className="text-sm text-slate-400">
+                                    <div key={index} className="text-sm text-slate-600">
                                         • {file.name}
                                     </div>
                                 ))}
                                 {selectedFiles.length > 10 && (
-                                    <div className="text-sm text-slate-500">
+                                    <div className="text-sm text-slate-600">
                                         ... and {selectedFiles.length - 10} more
                                     </div>
                                 )}
@@ -306,7 +339,7 @@ const Admin = () => {
                     <button
                         onClick={handleUpload}
                         disabled={selectedFiles.length === 0 || uploading}
-                        className="w-full mt-6 px-6 py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
+                        className="w-full mt-6 px-6 py-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2 shadow-lg"
                     >
                         {uploading ? (
                             <>
@@ -324,23 +357,23 @@ const Admin = () => {
 
                 {/* Error Message */}
                 {error && (
-                    <div className="bg-red-500/10 border border-red-500 rounded-xl p-4 mb-8 flex items-start space-x-3">
-                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="bg-red-50 border border-red-300 rounded-xl p-5 mb-8 flex items-start space-x-3 shadow-sm">
+                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                         <div>
-                            <div className="font-semibold text-red-500">Error</div>
-                            <div className="text-red-400">{error}</div>
+                            <div className="font-semibold text-red-700">Error</div>
+                            <div className="text-red-600">{error}</div>
                         </div>
                     </div>
                 )}
 
                 {/* Success Result */}
                 {result && (
-                    <div className="bg-green-500/10 border border-green-500 rounded-xl p-6 mb-8">
+                    <div className="bg-green-50 border border-green-300 rounded-xl p-6 mb-8 shadow-sm">
                         <div className="flex items-start space-x-3 mb-4">
-                            <CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0" />
+                            <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" />
                             <div>
-                                <div className="font-semibold text-green-500 text-lg">Upload Complete!</div>
-                                <div className="text-green-400">
+                                <div className="font-semibold text-green-700 text-lg">Upload Complete!</div>
+                                <div className="text-green-600">
                                     {result.statistics.successful} photos processed successfully
                                     <br />
                                     {result.statistics.total_faces} faces detected and indexed
@@ -353,20 +386,20 @@ const Admin = () => {
 
                         {/* Processing Details */}
                         <div className="mt-4">
-                            <div className="font-semibold text-white mb-2">Processing Details</div>
+                            <div className="font-semibold text-slate-800 mb-3">Processing Details</div>
                             <div className="max-h-60 overflow-y-auto space-y-2">
                                 {result.statistics.photo_details.map((detail, index) => (
                                     <div
                                         key={index}
-                                        className="bg-slate-900/50 rounded-lg p-3 text-sm"
+                                        className="bg-white/50 backdrop-blur-sm rounded-lg p-3 text-sm border border-purple-100"
                                     >
-                                        <div className="font-semibold text-white">{detail.filename}</div>
+                                        <div className="font-semibold text-slate-800">{detail.filename}</div>
                                         {detail.success ? (
-                                            <div className="text-green-400">
+                                            <div className="text-green-600">
                                                 ✓ {detail.faces_detected} faces detected
                                             </div>
                                         ) : (
-                                            <div className="text-red-400">
+                                            <div className="text-red-600">
                                                 ✗ {detail.error}
                                             </div>
                                         )}

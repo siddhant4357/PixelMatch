@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Camera, Upload, Search } from 'lucide-react'
+import { Camera, Upload, Search, Sparkles } from 'lucide-react'
 
 const Navbar = () => {
   const location = useLocation()
@@ -8,24 +8,26 @@ const Navbar = () => {
   const isActive = (path) => location.pathname === path
 
   return (
-    <nav className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-700 sticky top-0 z-50">
-      <div className="container mx-auto px-4">
+    <nav className="bg-white/60 backdrop-blur-md border-b border-purple-200/50 sticky top-0 z-50 shadow-sm">
+      <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <a href="/" className="flex items-center space-x-2">
-            <Camera className="w-8 h-8 text-indigo-500" />
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-500">
+          <Link to="/" className="flex items-center space-x-2 group">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-purple-400 to-pink-400 group-hover:scale-110 transition-transform shadow-md">
+              <Camera className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
               PixelMatch
             </span>
-          </a>
+          </Link>
 
           {/* Navigation Links */}
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-2">
             <Link
               to="/"
-              className={`px-4 py-2 rounded-lg transition-all ${isActive('/')
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              className={`px-4 py-2 rounded-xl transition-all font-medium ${isActive('/')
+                ? 'bg-gradient-to-r from-purple-400 to-pink-400 text-white shadow-md'
+                : 'text-slate-700 hover:bg-purple-100/50 hover:text-purple-600'
                 }`}
             >
               Home
@@ -33,9 +35,9 @@ const Navbar = () => {
 
             <Link
               to="/admin"
-              className={`px-4 py-2 rounded-lg transition-all flex items-center space-x-2 ${isActive('/admin')
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-medium ${isActive('/admin')
+                ? 'bg-gradient-to-r from-purple-400 to-pink-400 text-white shadow-md'
+                : 'text-slate-700 hover:bg-purple-100/50 hover:text-purple-600'
                 }`}
             >
               <Upload className="w-4 h-4" />
@@ -44,9 +46,9 @@ const Navbar = () => {
 
             <Link
               to="/guest"
-              className={`px-4 py-2 rounded-lg transition-all flex items-center space-x-2 ${isActive('/guest')
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-medium ${isActive('/guest') || isActive('/guest/ask-ai')
+                ? 'bg-gradient-to-r from-purple-400 to-pink-400 text-white shadow-md'
+                : 'text-slate-700 hover:bg-purple-100/50 hover:text-purple-600'
                 }`}
             >
               <Search className="w-4 h-4" />
