@@ -19,18 +19,20 @@ Perfect for events, weddings, conferences, and gatherings with thousands of phot
 PixelMatch is a sophisticated AI-powered photo search platform that combines:
 
 - **🧠 Super-Ensemble Face Recognition**: Dual-model architecture (ArcFace + FaceNet512) achieving 99.99% accuracy
+- **🏠 Multi-Room Event Architecture**: Create isolated events with unique codes and dedicated databases
 - **💬 Natural Language AI Search**: Conversational photo discovery powered by Groq AI (Llama 3.3 70B)
 - **📍 Intelligent Location Extraction**: Offline reverse geocoding from GPS metadata
 - **⚡ Lightning-Fast Vector Search**: FAISS-powered sub-millisecond similarity matching
+- **📦 Bulk Download**: One-click ZIP download of all matched photos
 - **🔒 Privacy-First Design**: Guests only see photos they appear in
 
 ---
 
 ## 🖼️ Screenshots
 
-### Admin Panel
+### Admin Panel (Room & Upload Management)
 ![Admin Panel](./assets/adminpage.png)
-*Powerful admin interface for photo import, Google Drive integration, and database management*
+*Create rooms, import photos, and manage event databases*
 
 ### AI-Powered Search
 ![Ask AI Page](./assets/askAipage.png)
@@ -49,6 +51,16 @@ User Selfie Upload → Face Embedding Generation → FAISS Vector Search → Fac
                                                                               ↓
 User AI Query → Groq AI Parser → Location/Date/Keyword Extraction → Filter Results → Display
 ```
+
+### Full Event Workflow
+
+![System Workflow](./assets/workflow.png)
+
+1.  **Admin** creates a "Room" (Event)
+2.  **Admin** uploads thousands of photos to that Room
+3.  **System** indexes photos (Face + Location + Time)
+4.  **Guests** join Room with Code
+5.  **Guests** find and download their photos instantly
 
 ---
 
@@ -102,6 +114,11 @@ User AI Query → Groq AI Parser → Location/Date/Keyword Extraction → Filter
 
 ## 🚀 Key Features
 
+### 🏠 Multi-Room Event Management
+- Create separate "Rooms" for different events (e.g., "Wedding", "Conference")
+- Secure rooms with 6-digit codes and passwords
+- Isolated databases for each room ensuring complete data separation
+
 ### 🎤 AI-Powered Conversational Search
 
 Ask questions in natural language:
@@ -111,6 +128,11 @@ Ask questions in natural language:
 - *"Show all my photos"*
 
 The AI understands context, extracts location/date/keywords, and returns relevant results.
+
+### 📦 Download All Feature
+- One-click "Download All" button for guests
+- Automatically generates a ZIP file of all matched photos
+- Supports resuming and progress tracking
 
 ### 🧠 Super-Ensemble Face Recognition
 
@@ -267,9 +289,25 @@ git push origin main
 
 ---
 
-### **Option 2: Process on Deployed Server**
+## 🎓 Academic Tools & Dataset Analysis
 
-Deploy first, then import photos via admin panel. **Note**: May timeout on free tier for large batches (>1000 photos).
+To assist with academic project requirements (data collection and analysis), we include built-in analysis tools.
+
+### Dataset Analysis Report
+
+Generate distribution charts and statistical reports for your training dataset:
+
+```bash
+cd backend
+python analyze_dataset.py
+```
+
+**Generates:**
+- 📊 **Class Distribution Chart** (`backend/data/analysis_report/class_distribution.png`)
+- 🥧 **Dataset Composition Pie Chart** (`backend/data/analysis_report/dataset_composition.png`)
+- 📄 **Full Text Report** (`backend/data/analysis_report/analysis_report.md`)
+
+This report can be directly used for **Phase 3: Data Preprocessing & Analysis** documentation.
 
 ---
 
@@ -397,6 +435,7 @@ VITE_API_URL=http://localhost:8000
 PixelMatch/
 ├── assets/
 │   ├── architecture.png         # System architecture diagram
+│   ├── workflow.png             # Full event workflow diagram
 │   ├── homepage.png             # Landing page screenshot
 │   ├── adminpage.png            # Admin panel screenshot
 │   └── askAipage.png            # AI search screenshot
@@ -421,6 +460,7 @@ PixelMatch/
 │   ├── main.py                  # FastAPI application
 │   ├── config.py                # Configuration
 │   ├── requirements.txt         # Python dependencies
+│   ├── analyze_dataset.py       # Dataset analysis tool
 │   └── ARCHITECTURE.md          # Detailed architecture docs
 ├── frontend/
 │   ├── src/
