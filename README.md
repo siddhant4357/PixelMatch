@@ -445,6 +445,8 @@ PixelMatch/
 
 ### Super-Ensemble Architecture
 
+![Neural Network Architecture](./assets/neoron_architecture.png)
+
 The face recognition system uses a **weighted ensemble** approach:
 
 ```
