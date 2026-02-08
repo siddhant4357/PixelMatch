@@ -1,0 +1,55 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.venv/
+backend/venv/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+frontend/node_modules/
+
+# Build
+dist/
+build/
+backend/dist/
+backend/build/
+frontend/dist/
+frontend/build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backend Data
+backend/data/*
+!backend/data/.gitkeep
+!backend/data/**/.gitkeep
+backend/temp_drive_downloads/
+backend/uploads/
+*.sqlite3
+*.db
+backend/*.db
+
+# Ignore large model files explicitly if they end up elsewhere
+*.h5
+*.pth
+*.onnx
+*.pb
+
+# Ignore local config
+backend/config_local.py

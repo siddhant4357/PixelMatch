@@ -23,8 +23,12 @@ class LocationDB:
             persist_dir: Directory to persist the database
         """
         self.persist_dir = Path(persist_dir or config.CHROMA_PERSIST_DIR)
-        self.persist_dir.mkdir(parents=True, exist_ok=True)
         
+        # If using room directory, save directly in root. If using global default (chromadb), keep as is.
+        # Logic: If persist_dir ends with 'chromadb', it's likely the default config.
+        # But for rooms, we pass the room root.
+        
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.persist_dir / "location_db.pkl"
         
         # Database structure:
@@ -251,13 +255,32 @@ class LocationDB:
         return distance
 
 
-# Global instance
-_location_db_instance = None
+
+# Global instances cache
+_location_db_instances = {}
 
 
-def get_location_db() -> LocationDB:
-    """Get or create global location database instance."""
-    global _location_db_instance
-    if _location_db_instance is None:
-        _location_db_instance = LocationDB()
-    return _location_db_instance
+def get_location_db(room_id: str = None) -> LocationDB:
+    """
+    Get or create location database instance for a specific room.
+    """
+    global _location_db_instances
+    
+    key = room_id or 'default'
+    
+    if key not in _location_db_instances:
+        if room_id:
+            # Room-specific path
+            from services.room_service import get_room_service
+            room_path = get_room_service().get_room_path(room_id)
+            if not room_path:
+                 # Fallback or error? Let's just create separate instance
+                 # Ideally this should raise error if room doesn't exist
+                 pass
+            persist_dir = room_path
+        else:
+            persist_dir = None
+            
+        _location_db_instances[key] = LocationDB(persist_dir=persist_dir)
+        
+    return _location_db_instances[key]

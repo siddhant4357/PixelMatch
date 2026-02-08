@@ -1,8 +1,33 @@
-import React from 'react'
-import { Link } from 'react-router-dom'
-import { Upload, Search, Zap, Database, Camera, Sparkles, Brain, Shield } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Upload, Search, Zap, Database, Camera, Sparkles, Brain, Shield, Copy, X, Check } from 'lucide-react'
 
 const Home = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [showRoomModal, setShowRoomModal] = useState(false)
+  const [createdRoomInfo, setCreatedRoomInfo] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (location.state?.newRoomCreated && location.state?.roomInfo) {
+      setCreatedRoomInfo(location.state.roomInfo)
+      setShowRoomModal(true)
+      // Clear state so it doesn't show again on refresh (if we could, but react-router state persists)
+      // We handle repeated showing by relying on 'newRoomCreated' flag check, but ideally we clear it.
+      // Replacing history state is cleaner.
+      navigate('/', { replace: true, state: {} })
+    }
+  }, [location.state, navigate])
+
+  const handleCopy = () => {
+    if (createdRoomInfo?.room_id) {
+      navigator.clipboard.writeText(createdRoomInfo.room_id)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
   const features = [
     {
       icon: <Brain className="w-8 h-8 text-purple-600" />,
@@ -51,6 +76,56 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFF5E6] via-[#FFE8D6] to-[#FFF0E0] relative overflow-hidden">
+
+      {/* New Room Created Modal */}
+      {showRoomModal && createdRoomInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-purple-100 relative animate-scaleIn">
+            <button
+              onClick={() => setShowRoomModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4 animate-bounce">
+                <Sparkles className="w-8 h-8 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800">Room Created!</h2>
+              <p className="text-gray-600 mt-2">Share this Room ID with your guests so they can join.</p>
+            </div>
+
+            <div className="bg-purple-50 rounded-xl p-6 mb-6 border border-purple-100">
+              <div className="text-sm text-purple-600 font-medium mb-1 uppercase tracking-wide text-center">Event Name</div>
+              <div className="text-xl font-bold text-gray-800 text-center mb-4">{createdRoomInfo.event_name}</div>
+
+              <div className="text-sm text-purple-600 font-medium mb-1 uppercase tracking-wide text-center">Room ID</div>
+              <div className="flex items-center justify-center gap-3">
+                <code className="text-3xl font-mono font-bold text-indigo-600 tracking-wider bg-white px-4 py-2 rounded-lg border border-purple-200 shadow-inner">
+                  {createdRoomInfo.room_id}
+                </code>
+                <button
+                  onClick={handleCopy}
+                  className="p-2 rounded-lg bg-white border border-purple-200 hover:bg-purple-100 transition-colors text-purple-600 shadow-sm"
+                  title="Copy Room ID"
+                >
+                  {copied ? <Check className="w-6 h-6 text-green-600" /> : <Copy className="w-6 h-6" />}
+                </button>
+              </div>
+              {copied && <div className="text-xs text-green-600 text-center mt-2 font-medium">Copied to clipboard!</div>}
+            </div>
+
+            <button
+              onClick={() => setShowRoomModal(false)}
+              className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg hover:scale-[1.02] transition-all"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Dotted Grid Pattern */}
       <div className="fixed inset-0 opacity-30" style={{
         backgroundImage: 'radial-gradient(circle, #D8B4A0 1px, transparent 1px)',

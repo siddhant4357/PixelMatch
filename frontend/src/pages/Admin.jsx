@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Upload, Image as ImageIcon, AlertCircle, CheckCircle, Database, Trash2 } from 'lucide-react'
-import { uploadBulkPhotos, getStats, resetDatabase } from '../services/api'
+import { uploadBulkPhotos, getStats, resetDatabase, importFromDrive, getTaskStatus } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ProgressLoader from '../components/ProgressLoader'
 import SuccessModal from '../components/SuccessModal'
@@ -36,8 +36,7 @@ const Admin = () => {
 
             interval = setInterval(async () => {
                 try {
-                    const res = await fetch(`http://localhost:8000/admin/task-status/${taskId}`);
-                    const data = await res.json();
+                    const data = await getTaskStatus(taskId);
                     setDriveStatus(data);
 
                     if (data.status === 'completed' || data.status === 'failed') {
@@ -61,16 +60,11 @@ const Admin = () => {
     const handleDriveImport = async () => {
         if (!driveUrl) return;
         try {
-            const res = await fetch('http://localhost:8000/admin/import-drive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: driveUrl })
-            });
-            const data = await res.json();
+            const data = await importFromDrive(driveUrl);
             setTaskId(data.task_id);
             setDriveStatus({ status: 'starting', message: 'Initializing...' });
         } catch (err) {
-            alert("Failed to start import");
+            alert("Failed to start import: " + err.message);
         }
     };
 
@@ -138,9 +132,16 @@ const Admin = () => {
 
         if (!firstConfirm) return
 
+        // Ask for password
+        const password = window.prompt("Enter Room Password to confirm reset:")
+        if (!password) {
+            alert('❌ Password required. Reset cancelled.')
+            return
+        }
+
         // Second confirmation - must type DELETE
         const secondConfirm = window.prompt(
-            'To confirm deletion, please type DELETE (in capital letters):'
+            'To finally confirm, please type DELETE (in capital letters):'
         )
 
         if (secondConfirm !== 'DELETE') {
@@ -154,7 +155,7 @@ const Admin = () => {
         setResult(null)
 
         try {
-            await resetDatabase()
+            await resetDatabase(password)
             alert('✅ Database reset successfully! All photos and face data have been deleted.')
             loadStats() // Refresh stats to show empty database
         } catch (err) {

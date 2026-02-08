@@ -16,16 +16,26 @@ from services.admin_service import get_admin_service
 tasks = {}
 
 class DriveService:
+
     def __init__(self):
         self.download_dir = config.BASE_DIR / "temp_drive_downloads"
         self.download_dir.mkdir(exist_ok=True)
-        self.admin_service = get_admin_service()
+        # We don't bind admin_service here anymore, we get it per task
 
-    async def process_drive_link(self, url: str, task_id: str):
+    async def process_drive_link(self, url: str, task_id: str, room_id: str = None):
         """
         Background task: Download -> Move -> Process.
         Handles both individual files and folders.
         """
+        # Resolve dependencies based on room_id
+        admin_service = get_admin_service(room_id)
+        if room_id:
+             from services.room_service import get_room_service
+             room_path = get_room_service().get_room_path(room_id)
+             target_upload_dir = room_path / "uploads"
+        else:
+             target_upload_dir = config.UPLOAD_DIR
+             
         tasks[task_id] = {"status": "downloading", "progress": "0%", "message": "Downloading from Drive..."}
         
         task_dir = self.download_dir / task_id
@@ -101,20 +111,24 @@ class DriveService:
             tasks[task_id]["message"] = f"Downloaded {len(files)} file(s). Processing AI..."
             
             # 2. Move files to main Uploads dir
-            # Let's move valid images to config.UPLOAD_DIR to keep them permanent
+            # Let's move valid images to target_upload_dir to keep them permanent
             valid_images = []
             for f in files:
                 path = Path(f)
                 if config.is_allowed_file(path.name):
                     # Move to uploads
-                    target = config.UPLOAD_DIR / path.name
+                    target = target_upload_dir / path.name
                     # Avoid overwrite collision
                     if target.exists():
-                        target = config.UPLOAD_DIR / f"{uuid.uuid4().hex[:6]}_{path.name}"
+                        target = target_upload_dir / f"{uuid.uuid4().hex[:6]}_{path.name}"
                     
-                    shutil.move(str(path), str(target))
-                    valid_images.append(target)
-                    print(f"[DRIVE] Moved {path.name} -> {target.name}")
+                    try:
+                        shutil.move(str(path), str(target))
+                        valid_images.append(target)
+                        print(f"[DRIVE] Moved {path.name} -> {target.name}")
+                    except Exception as move_err:
+                        print(f"[DRIVE] ERROR moving file {path.name}: {move_err}")
+
             
             # Cleanup temp
             if task_dir.exists():
@@ -151,7 +165,7 @@ class DriveService:
                 print(f"[DRIVE] Processing image {processed_count + 1}/{len(valid_images)}: {img_path.name}")
                 
                 try:
-                    result = await self.admin_service._process_image_file(img_path)
+                    result = await admin_service._process_image_file(img_path)
                     
                     if result['success']:
                         stats['successful'] += 1

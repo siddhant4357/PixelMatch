@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Upload, AlertCircle, Sliders, Download, Sparkles } from 'lucide-react'
+import { Search, Upload, AlertCircle, Sliders, Download, Sparkles, PackageOpen } from 'lucide-react'
 import { searchPhotosBySelfie, getPhotoUrl } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
 const Guest = () => {
   const [selfieFile, setSelfieFile] = useState(null)
@@ -12,6 +14,7 @@ const Guest = () => {
   const [error, setError] = useState(null)
   const [threshold, setThreshold] = useState(0.50)  // Match backend default
   const [maxResults, setMaxResults] = useState(50)
+  const [downloading, setDownloading] = useState(false)
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0]
@@ -42,6 +45,59 @@ const Guest = () => {
       setError(err.message)
     } finally {
       setSearching(false)
+    }
+  }
+
+  const handleDownloadAll = async () => {
+    if (!results || results.total_matches === 0) return
+
+    setDownloading(true)
+    try {
+      const zip = new JSZip()
+      const folder = zip.folder('PixelMatch_Photos')
+
+      console.log(`Starting download of ${results.matches.length} photos...`)
+
+      // Fetch all photos and add to ZIP
+      for (let i = 0; i < results.matches.length; i++) {
+        const match = results.matches[i]
+        try {
+          console.log(`Downloading ${i + 1}/${results.matches.length}: ${match.photo_name}`)
+
+          const photoUrl = getPhotoUrl(match.photo_name)
+          const response = await fetch(photoUrl, {
+            mode: 'cors'
+          })
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+          }
+
+          const blob = await response.blob()
+          console.log(`✓ Downloaded ${match.photo_name} (${blob.size} bytes)`)
+          folder.file(match.photo_name, blob)
+        } catch (err) {
+          console.error(`Failed to download ${match.photo_name}:`, err)
+          // Continue with other photos even if one fails
+        }
+      }
+
+      console.log('Generating ZIP file...')
+      // Generate and download ZIP
+      const content = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      })
+
+      console.log(`ZIP file created: ${content.size} bytes`)
+      saveAs(content, `PixelMatch_${results.total_matches}_Photos.zip`)
+      console.log('Download started!')
+    } catch (err) {
+      console.error('ZIP creation error:', err)
+      setError('Failed to create ZIP file: ' + err.message)
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -200,8 +256,27 @@ const Guest = () => {
             ) : (
               <>
                 <div className="bg-green-50 border border-green-300 rounded-xl p-5 mb-8 shadow-sm">
-                  <div className="font-semibold text-green-700 text-lg">
-                    ✅ Found {results.total_matches} photo(s) containing you!
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold text-green-700 text-lg">
+                      ✅ Found {results.total_matches} photo(s) containing you!
+                    </div>
+                    <button
+                      onClick={handleDownloadAll}
+                      disabled={downloading}
+                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg"
+                    >
+                      {downloading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          <span>Creating ZIP...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PackageOpen className="w-5 h-5" />
+                          <span>Download All ({results.total_matches})</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
