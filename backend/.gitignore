@@ -26,6 +26,12 @@ data/models/*.h5
 data/models/*.pb
 data/models/*.pth
 
+# Training Data and Artifacts
+data/training_dataset/
+data/trained_models/
+!data/training_dataset/.gitkeep
+!data/trained_models/.gitkeep
+
 # Environment variables
 .env
 
