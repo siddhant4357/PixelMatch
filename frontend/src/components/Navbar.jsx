@@ -1,11 +1,20 @@
-import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { Camera, Upload, Search, Sparkles } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Camera, Upload, Search, Sparkles, LogOut } from 'lucide-react'
+import { getRoomInfo, setRoomInfo } from '../services/api'
 
 const Navbar = () => {
   const location = useLocation()
+  const navigate = useNavigate()
+  const roomInfo = getRoomInfo()
 
   const isActive = (path) => location.pathname === path
+
+  const handleLeave = () => {
+    if (window.confirm('Are you sure you want to leave this event?')) {
+      setRoomInfo(null)
+      navigate('/welcome')
+    }
+  }
 
   return (
     <nav className="bg-white/60 backdrop-blur-md border-b border-purple-200/50 sticky top-0 z-50 shadow-sm">
@@ -16,9 +25,16 @@ const Navbar = () => {
             <div className="p-2 rounded-xl bg-gradient-to-br from-purple-400 to-pink-400 group-hover:scale-110 transition-transform shadow-md">
               <Camera className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
-              PixelMatch
-            </span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent leading-none">
+                PixelMatch
+              </span>
+              {roomInfo && (
+                <span className="text-xs text-gray-500 font-medium">
+                  {roomInfo.event_name} ({roomInfo.room_id})
+                </span>
+              )}
+            </div>
           </Link>
 
           {/* Navigation Links */}
@@ -54,6 +70,14 @@ const Navbar = () => {
               <Search className="w-4 h-4" />
               <span>Guest</span>
             </Link>
+
+            <button
+              onClick={handleLeave}
+              className="px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-medium text-slate-700 hover:bg-red-50 hover:text-red-600 ml-4 border border-transparent hover:border-red-200"
+              title="Leave Event"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>

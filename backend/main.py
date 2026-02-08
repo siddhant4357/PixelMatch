@@ -3,17 +3,21 @@ PixelMatch Backend API
 FastAPI application for facial recognition-based photo retrieval.
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, BackgroundTasks, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from typing import List
+from typing import List, Optional
 import uvicorn
 import uuid
 from pathlib import Path
+from pydantic import BaseModel
 
 from services.admin_service import get_admin_service, AdminService
-from services.guest_service import get_guest_service
-from services.ai_search_service import get_ai_search_service
+from services.guest_service import get_guest_service, GuestService
+from services.ai_search_service import get_ai_search_service, AISearchService
+from services.room_service import get_room_service, RoomService
+from services.drive_service import get_drive_service
+
 import config
 
 # Create FastAPI app
@@ -33,58 +37,103 @@ app.add_middleware(
 )
 
 
+# --- Dependency Injection for Room Context ---
+
+async def get_current_room_admin_service(
+    x_room_id: str = Header(None, alias="X-Room-ID")
+) -> AdminService:
+    """Dependency: Get AdminService context-aware of the Room ID header."""
+    return get_admin_service(x_room_id)
+
+
+async def get_current_room_guest_service(
+    x_room_id: str = Header(None, alias="X-Room-ID")
+) -> GuestService:
+    """Dependency: Get GuestService context-aware of the Room ID header."""
+    return get_guest_service(x_room_id)
+
+
+async def get_current_room_ai_service(
+    x_room_id: str = Header(None, alias="X-Room-ID")
+) -> AISearchService:
+    """Dependency: Get AISearchService context-aware of the Room ID header."""
+    # AI service needs room context for location db and vector db
+    return get_ai_search_service(x_room_id)
+
+
+# --- Room Endpoints ---
+
+class CreateRoomRequest(BaseModel):
+    event_name: str
+    password: str = None
+
+class ResetDatabaseRequest(BaseModel):
+    password: str = None
+
+class JoinRoomRequest(BaseModel):
+    room_id: str
+
+@app.post("/api/rooms/create")
+async def create_room(request: CreateRoomRequest):
+    """Create a new event room."""
+    service = get_room_service()
+    return service.create_room(request.event_name, request.password)
+
+@app.post("/api/rooms/join")
+async def join_room(request: JoinRoomRequest):
+    """Validate and join a room."""
+    service = get_room_service()
+    room = service.get_room(request.room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found. Check the ID and try again.")
+    return room
+
+
+# --- General Endpoints ---
+
+@app.post("/admin/import-drive")
+async def import_drive(
+    request: dict, # {"url": "..."}
+    background_tasks: BackgroundTasks,
+    drive_service = Depends(get_drive_service),
+    x_room_id: str = Header(None, alias="X-Room-ID")
+):
+    url = request.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL required")
+    
+    task_id = str(uuid.uuid4())
+    background_tasks.add_task(drive_service.process_drive_link, url, task_id, x_room_id)
+    
+    return {"task_id": task_id, "message": "Background processing started"}
+
 @app.get("/")
 async def root():
-    """Root endpoint."""
     return {
-        "message": "PhotoScan API",
-        "version": "1.0.0",
-        "endpoints": {
-            "admin_upload": "/admin/upload",
-            "guest_search": "/guest/search",
-            "guest_validate": "/guest/validate",
-            "photo_download": "/photos/{filename}",
-            "stats": "/admin/stats",
-            "health": "/health"
-        }
+        "message": "PixelMatch API",
+        "version": "2.0.0", # Bumped version for Rooms support
+        "status": "active"
     }
-
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint.
-    Used for keep-alive pings to prevent backend sleep on free tier hosting.
-    """
-    admin_service = get_admin_service()
-    stats = admin_service.get_database_stats()
-    
-    return {
-        "status": "healthy",
-        "timestamp": "2026-01-21T13:58:00Z",  # Will be replaced by actual timestamp
-        "database": {
-            "total_faces": stats['total_faces'],
-            "total_photos": stats['total_photos']
-        }
-    }
-
+    """Health check endpoint."""
+    return {"status": "healthy"}
 
 @app.get("/ping")
 async def ping():
-    """
-    Lightweight ping endpoint for keep-alive.
-    Returns minimal response to keep server awake.
-    """
-    return {"status": "ok", "timestamp": "2026-01-21T13:58:00Z"}
+    return {"status": "ok"}
 
+
+# --- Admin Endpoints ---
 
 @app.post("/admin/upload")
-async def admin_upload(files: List[UploadFile] = File(...)):
+async def admin_upload(
+    files: List[UploadFile] = File(...),
+    admin_service: AdminService = Depends(get_current_room_admin_service)
+):
     """
     Admin endpoint: Upload bulk photos for processing.
-    
-    Accepts multiple image files, detects faces, generates embeddings,
-    and stores them in the vector database.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
@@ -104,7 +153,7 @@ async def admin_upload(files: List[UploadFile] = File(...)):
         
         # Check file size
         if len(file_bytes) > config.MAX_UPLOAD_SIZE_BYTES:
-            raise HTTPException(
+             raise HTTPException(
                 status_code=400,
                 detail=f"File {file.filename} exceeds maximum size of {config.MAX_UPLOAD_SIZE_MB}MB"
             )
@@ -112,7 +161,6 @@ async def admin_upload(files: List[UploadFile] = File(...)):
         photo_files.append((file.filename, file_bytes))
     
     # Process photos
-    admin_service = get_admin_service()
     results = await admin_service.process_bulk_upload(photo_files)
     
     return {
@@ -120,18 +168,72 @@ async def admin_upload(files: List[UploadFile] = File(...)):
         "statistics": results
     }
 
+@app.get("/admin/stats")
+async def get_stats(
+    admin_service: AdminService = Depends(get_current_room_admin_service)
+):
+    """Admin endpoint: Get database statistics."""
+    return admin_service.get_database_stats()
+
+@app.delete("/admin/photos/{filename}")
+async def delete_photo(
+    filename: str,
+    admin_service: AdminService = Depends(get_current_room_admin_service)
+):
+    """Admin endpoint: Delete a photo and its embeddings."""
+    # We need to resolve the path relative to the room (or global)
+    # The service expects a path string. 
+    # But wait, admin_service.delete_photo expects the full path string stored in vector DB.
+    # The vector DB stores whatever path we gave it.
+    # In process_bulk_upload, we construct path: self.upload_dir / filename
+    
+    photo_path = admin_service.upload_dir / filename
+    
+    result = admin_service.delete_photo(str(photo_path))
+    
+    if not result['success']:
+        raise HTTPException(status_code=500, detail=result.get('error', 'Deletion failed'))
+    
+    return result
+
+@app.post("/admin/database/reset")
+async def reset_database(
+    request: ResetDatabaseRequest,
+    admin_service: AdminService = Depends(get_current_room_admin_service),
+    x_room_id: str = Header(None, alias="X-Room-ID")
+):
+    """
+    Admin endpoint: Reset the database for the current room context.
+    WARNING: This deletes all face embeddings and photos!
+    Requires password verification.
+    """
+    if not x_room_id:
+        raise HTTPException(status_code=400, detail="Room ID required")
+
+    # Verify password
+    room_service = get_room_service()
+    if not room_service.verify_password(x_room_id, request.password):
+        raise HTTPException(status_code=403, detail="Invalid room password")
+
+    result = admin_service.reset_database()
+    
+    if not result['success']:
+        raise HTTPException(status_code=500, detail=result.get('error', 'Reset failed'))
+    
+    return result
+
+
+# --- Guest Endpoints ---
 
 @app.post("/guest/search")
 async def guest_search(
     selfie: UploadFile = File(...),
     top_k: int = Form(default=50),
-    similarity_threshold: float = Form(default=None)
+    similarity_threshold: float = Form(default=None),
+    guest_service: GuestService = Depends(get_current_room_guest_service)
 ):
     """
     Guest endpoint: Upload selfie and search for matching photos.
-    
-    Detects face in selfie, generates embedding, and searches
-    for similar faces in the database.
     """
     # Validate file type
     if not config.is_allowed_file(selfie.filename):
@@ -140,18 +242,15 @@ async def guest_search(
             detail=f"Invalid file type. Allowed: {config.ALLOWED_EXTENSIONS}"
         )
     
-    # Read file bytes
     selfie_bytes = await selfie.read()
     
-    # Check file size
     if len(selfie_bytes) > config.MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=400,
             detail=f"File exceeds maximum size of {config.MAX_UPLOAD_SIZE_MB}MB"
         )
     
-    # Search for matching photos
-    guest_service = get_guest_service()
+    # Search
     results = await guest_service.search_photos_by_selfie(
         selfie_bytes=selfie_bytes,
         filename=selfie.filename,
@@ -164,26 +263,16 @@ async def guest_search(
     
     return results
 
-
 @app.post("/guest/validate")
-async def guest_validate(selfie: UploadFile = File(...)):
-    """
-    Guest endpoint: Validate selfie before search.
-    
-    Quick check to ensure selfie contains a detectable face.
-    """
-    # Validate file type
+async def guest_validate(
+    selfie: UploadFile = File(...),
+    guest_service: GuestService = Depends(get_current_room_guest_service)
+):
+    """Guest endpoint: Validate selfie before search."""
     if not config.is_allowed_file(selfie.filename):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type. Allowed: {config.ALLOWED_EXTENSIONS}"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file type")
     
-    # Read file bytes
     selfie_bytes = await selfie.read()
-    
-    # Validate selfie
-    guest_service = get_guest_service()
     result = guest_service.validate_selfie(selfie_bytes)
     
     if not result['valid']:
@@ -192,148 +281,88 @@ async def guest_validate(selfie: UploadFile = File(...)):
     return result
 
 
+
+
+# ...
+
 @app.get("/photos/{filename}")
-async def get_photo(filename: str):
+async def get_photo(
+    filename: str,
+    x_room_id: str = Header(None, alias="X-Room-ID"),
+    room_id: str = Query(None)
+):
     """
-    Get a photo file by filename.
+    Get a photo file by filename. 
+    Context-aware: looks in room folder if room ID provided (via Header or Query).
+    """
+    actual_room_id = x_room_id or room_id
     
-    Returns the photo file for download/display.
-    """
-    photo_path = config.UPLOAD_DIR / filename
+    if actual_room_id:
+        room_service = get_room_service()
+        room_path = room_service.get_room_path(actual_room_id)
+        if not room_path:
+             raise HTTPException(status_code=404, detail="Room not found")
+        photo_path = room_path / "uploads" / filename
+    else:
+        photo_path = config.UPLOAD_DIR / filename
     
     if not photo_path.exists():
         raise HTTPException(status_code=404, detail="Photo not found")
     
-    return FileResponse(
+    # Create FileResponse with CORS headers for ZIP download support
+    response = FileResponse(
         path=str(photo_path),
         media_type="image/jpeg",
         filename=filename
     )
-
-
-@app.get("/admin/stats")
-async def get_stats():
-    """
-    Admin endpoint: Get database statistics.
-    """
-    admin_service = get_admin_service()
-    stats = admin_service.get_database_stats()
     
-    return stats
-
-
-@app.delete("/admin/photos/{filename}")
-async def delete_photo(filename: str):
-    """
-    Admin endpoint: Delete a photo and its embeddings.
-    """
-    photo_path = config.UPLOAD_DIR / filename
+    # Add CORS headers to allow fetch from frontend
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
     
-    if not photo_path.exists():
-        raise HTTPException(status_code=404, detail="Photo not found")
-    
-    admin_service = get_admin_service()
-    result = admin_service.delete_photo(str(photo_path))
-    
-    if not result['success']:
-        raise HTTPException(status_code=500, detail=result.get('error', 'Deletion failed'))
-    
-    return result
-
-# --- Google Drive Routes ---
-
-from services.drive_service import get_drive_service, tasks
-
-@app.post("/admin/import-drive")
-async def import_drive(
-    request: dict, # {"url": "..."}
-    background_tasks: BackgroundTasks,
-    drive_service = Depends(get_drive_service)
-):
-    url = request.get("url")
-    if not url:
-        raise HTTPException(status_code=400, detail="URL required")
-    
-    task_id = str(uuid.uuid4())
-    background_tasks.add_task(drive_service.process_drive_link, url, task_id)
-    
-    return {"task_id": task_id, "message": "Background processing started"}
-
-@app.get("/admin/task-status/{task_id}")
-async def get_task_status(task_id: str):
-    task = tasks.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
-
-@app.delete("/admin/database")
-async def reset_database(service: AdminService = Depends(get_admin_service)):
-    """
-    Admin endpoint: Reset the entire database.
-    WARNING: This deletes all face embeddings, photos, and selfies!
-    """
-    result = service.reset_database()
-    
-    if not result['success']:
-        raise HTTPException(status_code=500, detail=result.get('error', 'Reset failed'))
-    
-    return result
+    return response
 
 
-# --- AI Search Routes ---
-
-from pydantic import BaseModel
+# --- AI Search Endpoints ---
 
 class AIQueryRequest(BaseModel):
     session_id: str
     query: str
 
-
 @app.post("/guest/ai-search/upload-selfie")
-async def ai_search_upload_selfie(selfie: UploadFile = File(...)):
+async def ai_search_upload_selfie(
+    selfie: UploadFile = File(...),
+    guest_service: GuestService = Depends(get_current_room_guest_service),
+    ai_service: AISearchService = Depends(get_current_room_ai_service)
+):
     """
     AI Search: Upload selfie and create search session.
-    
-    Returns session_id for subsequent queries.
     """
-    # Validate file type
     if not config.is_allowed_file(selfie.filename):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type. Allowed: {config.ALLOWED_EXTENSIONS}"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file type")
     
-    # Read file bytes
     selfie_bytes = await selfie.read()
     
-    # Check file size
-    if len(selfie_bytes) > config.MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File exceeds maximum size of {config.MAX_UPLOAD_SIZE_MB}MB"
-        )
-    
-    # Validate and extract face embedding
-    guest_service = get_guest_service()
+    # 1. Validate Face via Guest Service
     validation = guest_service.validate_selfie(selfie_bytes)
-    
     if not validation['valid']:
-        raise HTTPException(
-            status_code=400,
-            detail=validation.get('error', 'No face detected in selfie')
-        )
+        raise HTTPException(status_code=400, detail=validation.get('error', 'No face detected'))
     
-    # Generate embedding
+    # 2. Generate Embedding (using code from Main logic or helper)
+    # We can reuse the logic from GuestService or do it here.
+    # To keep it DRY, let's duplicate the logic slightly or see if GuestService can give us embedding.
+    # GuestService doesn't expose embedding generation directly in public API efficiently (it does search).
+    # We can use the lower level models directly since we are in backend.
+    
     from utils.image_processing import load_image_from_bytes, crop_face, preprocess_face
     from models.face_recognition import get_facenet_model
     
     image = load_image_from_bytes(selfie_bytes)
     faces = guest_service.face_detector.detect_faces(image)
-    
     if not faces:
-        raise HTTPException(status_code=400, detail="No face detected in selfie")
+         raise HTTPException(status_code=400, detail="No face detected")
     
-    # Use first face
     bbox, confidence = faces[0]
     face_img = crop_face(image, bbox)
     preprocessed = preprocess_face(face_img, config.FACE_SIZE)
@@ -342,10 +371,9 @@ async def ai_search_upload_selfie(selfie: UploadFile = File(...)):
     embedding = facenet.generate_embedding(preprocessed, enable_tta=True)
     
     if embedding is None:
-        raise HTTPException(status_code=500, detail="Failed to generate face embedding")
-    
-    # Create session
-    ai_service = get_ai_search_service()
+        raise HTTPException(status_code=500, detail="Failed to generate embedding")
+        
+    # 3. Create Session
     session_id = ai_service.create_session(
         face_embedding=embedding.tolist(),
         selfie_filename=selfie.filename
@@ -354,20 +382,18 @@ async def ai_search_upload_selfie(selfie: UploadFile = File(...)):
     return {
         'success': True,
         'session_id': session_id,
-        'message': 'Selfie processed successfully! You can now ask me about your photos.',
+        'message': 'Session created.',
         'face_detected': True
     }
 
-
 @app.post("/guest/ai-search/query")
-async def ai_search_query(request: AIQueryRequest):
+async def ai_search_query(
+    request: AIQueryRequest,
+    ai_service: AISearchService = Depends(get_current_room_ai_service)
+):
     """
     AI Search: Process natural language query and search photos.
-    
-    Combines face recognition + metadata search with AI understanding.
     """
-    ai_service = get_ai_search_service()
-    
     result = ai_service.search_photos(
         session_id=request.session_id,
         user_query=request.query
@@ -378,52 +404,51 @@ async def ai_search_query(request: AIQueryRequest):
     
     return result
 
-
 @app.get("/guest/ai-search/locations")
-async def get_available_locations():
+async def get_available_locations(
+    ai_service: AISearchService = Depends(get_current_room_ai_service)
+):
     """
     Get all available photo locations for AI context.
     """
-    from models.location_db import get_location_db
-    
-    location_db = get_location_db()
-    locations = location_db.get_all_locations()
-    
+    # ai_service has location_db
+    locations = ai_service.location_db.get_all_locations()
     return {
         'success': True,
         'locations': locations,
         'count': len(locations)
     }
 
-
 @app.get("/admin/stats/metadata")
-async def get_metadata_stats():
+async def get_metadata_stats(
+    admin_service: AdminService = Depends(get_current_room_admin_service)
+):
     """
-    Get metadata statistics (locations, dates, etc.)
+    Get metadata statistics.
     """
-    from models.location_db import get_location_db
-    
-    location_db = get_location_db()
+    location_db = admin_service.location_db
     stats = location_db.get_stats()
     locations = location_db.get_all_locations()
-    
     return {
         'success': True,
         'stats': stats,
-        'locations': locations[:10]  # Top 10 locations
+        'locations': locations[:10]
     }
 
 
-# Startup Event to Pre-Load Models
-# Startup Event removed to prevent OOM on free tier
-# Models will be loaded lazily on first request
+# --- Google Drive Routes (Admin) ---
+# Note: Google Drive Service might need room awareness too if it saves files.
+# But for now let's assume it downloads to a temp folder and then calls AdminService.
+# If AdminService is injected, it should be the room-aware one.
+
+# We need to check services/drive_service.py to see how it calls AdminService.
+# It probably calls get_admin_service() directly, which would get the 'default' one.
+# This is a caveat. Google Drive import might need refactoring to accept room_id.
+# For now, let's leave it as is, or pass room_id in the request and forward it.
 
 if __name__ == "__main__":
-    import uvicorn
-    print(f"Starting PhotoScan API on {config.HOST}:{config.PORT}")
-    print(f"Upload directory: {config.UPLOAD_DIR}")
-    print(f"Selfie directory: {config.SELFIE_DIR}")
-    print(f"Model directory: {config.MODEL_DIR}")
+    print(f"Starting PixelMatch API on {config.HOST}:{config.PORT}")
+    print(f"Room Mode: Enabled")
     
     uvicorn.run(
         "main:app",

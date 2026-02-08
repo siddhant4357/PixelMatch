@@ -22,11 +22,24 @@ import config
 class GuestService:
     """Service for guest operations (selfie upload and photo search)."""
     
-    def __init__(self):
-        """Initialize guest service with AI models."""
+    def __init__(self, room_id: str = None):
+        """Initialize guest service with AI models and room context."""
+        self.room_id = room_id
         self.face_detector = FaceDetector()
         self.face_recognizer = get_facenet_model()
-        self.vector_db = get_vector_db()
+        self.vector_db = get_vector_db(room_id)
+        
+        # Room-specific selfie handling could be added here
+        if room_id:
+            from services.room_service import get_room_service
+            room_path = get_room_service().get_room_path(room_id)
+            self.selfie_dir = room_path / "uploads" # Or maybe a dedicated selfie dir? 
+            # For now let's keep using global selfie dir or maybe create one inside room?
+            # Let's create 'selfies' inside room
+            self.selfie_dir = room_path / "selfies"
+            self.selfie_dir.mkdir(exist_ok=True)
+        else:
+            self.selfie_dir = config.SELFIE_DIR
     
     async def search_photos_by_selfie(
         self,
@@ -53,7 +66,9 @@ class GuestService:
         """
         # Save selfie
         selfie_id = str(uuid.uuid4())
-        selfie_path = config.SELFIE_DIR / f"{selfie_id}_{filename}"
+        # Save selfie
+        selfie_id = str(uuid.uuid4())
+        selfie_path = self.selfie_dir / f"{selfie_id}_{filename}"
         
         try:
             with open(selfie_path, 'wb') as f:
@@ -316,15 +331,17 @@ class GuestService:
         }
 
 
-# Global service instance
-_guest_service = None
+
+# Global service instances (room_id -> instance)
+_guest_services = {}
 
 
-def get_guest_service() -> GuestService:
-    """Get or create global guest service instance."""
-    global _guest_service
+def get_guest_service(room_id: str = None) -> GuestService:
+    """Get or create guest service instance for a specific room."""
+    global _guest_services
     
-    if _guest_service is None:
-        _guest_service = GuestService()
+    key = room_id or 'default'
+    if key not in _guest_services:
+        _guest_services[key] = GuestService(room_id)
     
-    return _guest_service
+    return _guest_services[key]

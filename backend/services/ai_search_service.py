@@ -24,10 +24,11 @@ _sessions = {}
 class AISearchService:
     """Service for AI-powered photo search with natural language."""
     
-    def __init__(self):
+    def __init__(self, room_id: str = None):
         """Initialize AI search service."""
-        self.vector_db = get_vector_db()
-        self.location_db = get_location_db()
+        self.room_id = room_id
+        self.vector_db = get_vector_db(room_id)
+        self.location_db = get_location_db(room_id)
         
         # Initialize Groq client (lazy loading)
         self.groq_client = None
@@ -508,13 +509,17 @@ Examples:
         return filtered
 
 
-# Global instance
-_ai_search_service = None
+
+# Global instances (room_id -> instance)
+_ai_search_services = {}
 
 
-def get_ai_search_service() -> AISearchService:
-    """Get or create global AI search service instance."""
-    global _ai_search_service
-    if _ai_search_service is None:
-        _ai_search_service = AISearchService()
-    return _ai_search_service
+def get_ai_search_service(room_id: str = None) -> AISearchService:
+    """Get or create AI search service instance for specific room."""
+    global _ai_search_services
+    key = room_id or 'default'
+    
+    if key not in _ai_search_services:
+        _ai_search_services[key] = AISearchService(room_id)
+        
+    return _ai_search_services[key]

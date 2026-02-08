@@ -389,15 +389,33 @@ class FaceVectorDB:
             return False
 
 
-# Global instance (singleton)
-_vector_db_instance = None
+
+# Global instances cache (room_id -> instance)
+_vector_db_instances = {}
 
 
-def get_vector_db() -> FaceVectorDB:
-    """Get or create global vector database instance."""
-    global _vector_db_instance
+def get_vector_db(room_id: str = None) -> FaceVectorDB:
+    """
+    Get or create vector database instance for a specific room.
+    If room_id is None, returns the default global instance.
+    """
+    global _vector_db_instances
     
-    if _vector_db_instance is None:
-        _vector_db_instance = FaceVectorDB()
+    # Use 'default' for global instance
+    key = room_id or 'default'
     
-    return _vector_db_instance
+    if key not in _vector_db_instances:
+        if room_id:
+            # Room-specific path
+            from services.room_service import get_room_service
+            room_path = get_room_service().get_room_path(room_id)
+            if not room_path:
+                raise ValueError(f"Invalid room ID: {room_id}")
+            persist_dir = room_path / "chromadb"
+        else:
+            # Default global path
+            persist_dir = None
+            
+        _vector_db_instances[key] = FaceVectorDB(persist_dir=persist_dir)
+    
+    return _vector_db_instances[key]

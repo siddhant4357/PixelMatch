@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Send, Loader2, AlertCircle, Sparkles, MapPin, Calendar, Download } from 'lucide-react'
+import { Upload, Send, Loader2, AlertCircle, Sparkles, MapPin, Calendar, Download, PackageOpen } from 'lucide-react'
 import { uploadSelfieForAI, queryAI, getPhotoUrl } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
 const AskAI = () => {
     const navigate = useNavigate()
@@ -17,6 +19,7 @@ const AskAI = () => {
     const [sending, setSending] = useState(false)
     const [error, setError] = useState(null)
     const [results, setResults] = useState([])
+    const [downloading, setDownloading] = useState(false)
 
     const chatEndRef = useRef(null)
     const inputRef = useRef(null)
@@ -106,6 +109,62 @@ const AskAI = () => {
             }])
         } finally {
             setSending(false)
+        }
+    }
+
+    const handleDownloadAll = async () => {
+        if (results.length === 0) return
+
+        setDownloading(true)
+        try {
+            const zip = new JSZip()
+            const folder = zip.folder('PixelMatch_AI_Search')
+
+            console.log(`Starting download of ${results.length} photos...`)
+
+            // Fetch all photos and add to ZIP
+            for (let i = 0; i < results.length; i++) {
+                const result = results[i]
+                try {
+                    const photoName = result.photo_path
+                        ? result.photo_path.split(/[/\\]/).pop()
+                        : result.photo_name || 'Unknown'
+
+                    console.log(`Downloading ${i + 1}/${results.length}: ${photoName}`)
+
+                    const photoUrl = getPhotoUrl(photoName)
+                    const response = await fetch(photoUrl, {
+                        mode: 'cors'
+                    })
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`)
+                    }
+
+                    const blob = await response.blob()
+                    console.log(`✓ Downloaded ${photoName} (${blob.size} bytes)`)
+                    folder.file(photoName, blob)
+                } catch (err) {
+                    console.error(`Failed to download photo:`, err)
+                }
+            }
+
+            console.log('Generating ZIP file...')
+            // Generate and download ZIP
+            const content = await zip.generateAsync({
+                type: 'blob',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 }
+            })
+
+            console.log(`ZIP file created: ${content.size} bytes`)
+            saveAs(content, `PixelMatch_AI_${results.length}_Photos.zip`)
+            console.log('Download started!')
+        } catch (err) {
+            console.error('ZIP creation error:', err)
+            setError('Failed to create ZIP file: ' + err.message)
+        } finally {
+            setDownloading(false)
         }
     }
 
@@ -279,9 +338,30 @@ const AskAI = () => {
                         {/* Results Section */}
                         <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl overflow-hidden shadow-lg" style={{ height: '600px' }}>
                             <div className="p-6 border-b border-purple-200">
-                                <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                                    Results ({results.length})
-                                </h2>
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                                        Results ({results.length})
+                                    </h2>
+                                    {results.length > 0 && (
+                                        <button
+                                            onClick={handleDownloadAll}
+                                            disabled={downloading}
+                                            className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg text-sm"
+                                        >
+                                            {downloading ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                    <span>Creating ZIP...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <PackageOpen className="w-4 h-4" />
+                                                    <span>Download All</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="overflow-y-auto p-6" style={{ height: 'calc(600px - 80px)' }}>
