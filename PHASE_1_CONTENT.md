@@ -12,7 +12,7 @@ The problem addressed in this project is the development of an **End-to-End Face
 -   **Security & Privacy:** developing a custom local model ensures that sensitive biometric data does not need to be processed by third-party public APIs, ensuring better data sovereignty.
 
 ### **Relevance**
--   **Smart Campus:** This technology is directly applicable to automated attendance systems and secure access control in university labs.
+
 -   **Event Tech:** Real-time photo sharing platforms for convocations and fests.
 -   **Generic Applicability:** The pipeline (Data Collection $\rightarrow$ Embedding Generation $\rightarrow$ Classification) is relevant to any domain requiring object recognition with limited data (e.g., identifying rare plant species).
 
