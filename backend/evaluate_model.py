@@ -27,7 +27,7 @@ from utils.image_processing import load_image, crop_face, preprocess_face
 import config
 
 # Configuration
-DATASET_PATH = Path("data/training_dataset")
+DATASET_PATH = Path("data/test_dataset")
 MODEL_DIR = Path("data/trained_models")
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

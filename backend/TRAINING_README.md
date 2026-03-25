@@ -40,9 +40,40 @@ You will see:
 - **Training curves** saved as PNG (use this in your report!)
 
 
-## Running Evaluation
+## 🧠 Model Configuration & Hyperparameters
 
-To generate the **Confusion Matrix** and detailed metrics:
+During training (via both the script and the notebook), the following architecture and parameters are utilized:
+
+- **Feature Extractor (Backbone):** Pre-trained FaceNet (Inception-ResNet v1) generating 1024-dimensional embeddings.
+- **Classification Head (Head):** Custom Multi-Layer Perceptron (MLP).
+- **Batch Size:** 16
+- **Epochs:** 50
+- **Learning Rate:** 0.001
+- **Optimizer:** Adam
+- **Loss Function:** Cross-Entropy Loss
+- **Train/Validation Split:** 80% / 20%
+
+## 📊 Running Evaluation (Phase 5 Deliverables)
+
+To rigorously evaluate the model and fulfill your Phase 5 deliverables, we provide a unified Jupyter Notebook that handles training, visualization, and metric calculation all in one place.
+
+### Using the Evaluation Notebook
+
+1. Open `model_evaluation.ipynb` in your preferred Jupyter environment (VS Code, JupyterLab, etc.).
+2. Run the cells sequentially.
+
+**The Notebook will automatically run the logic to generate:**
+- **Training Curves:** Plots of Training & Validation Loss and Accuracy across all 50 epochs, used to check for overfitting.
+- **Classification Report:** Detailed metrics including:
+  - **Accuracy:** Overall correctness across all predictions.
+  - **Precision:** The accuracy of positive predictions per individual.
+  - **Recall:** The ability of the model to correctly identify all photos of a specific individual.
+  - **F1-Score:** The harmonic mean of Precision and Recall, proving the model's reliability even with a small dataset.
+- **Confusion Matrix:** A color-coded visualization (heatmap) showing true labels vs predicted labels, explicitly highlighting where the model succeeded and where it confused one person for another.
+
+### CLI Alternative
+
+If you do not wish to use the Jupyter Notebook, you can still generate the raw metrics via command line:
 
 ```bash
 python evaluate_model.py
@@ -52,12 +83,11 @@ This will create:
 - `data/trained_models/confusion_matrix.png` (Visual heatmap of predictions)
 - `data/trained_models/evaluation_report.json` (Precision/Recall numbers)
 
-## For Your Project Report
+## 🎓 For Your Project Report
 
-The generated files satisfy these PBL requirements:
-- ✅ **Model Code**: `custom_classifier.py` (PyTorch MLP)
-- ✅ **Training Logs**: JSON file with all metrics
-- ✅ **Training Curves**: PNG plots showing loss/accuracy
-- ✅ **Evaluation Results**: Confusion Matrix & Classification Report
+The generated files and the `model_evaluation.ipynb` notebook satisfy these PBL requirements:
+- ✅ **Model Code & Architecture selection**: `custom_classifier.py` and Notebook execution
+- ✅ **Training Strategy Highlights**: Batch Size=16, Epochs=50, LR=0.001
+- ✅ **Model Evaluation metrics**: Accuracy, F1-Score, Precision, Recall
+- ✅ **Visualizations**: Confusion Matrix & Training Loss/Accuracy Curves 
 - ✅ **Own Dataset**: Your photos organized by person
-
