@@ -4,7 +4,7 @@
 ## Activities & Implementations
 *   **Data Cleaning:** We processed the raw dataset to remove invalid, heavily blurred, or improperly cropped face images. This ensures the models learn from high-quality, clear facial features.
 *   **Normalization & Feature Extraction:** Face images were mathematically aligned and cropped. The pixel values were normalized (scaled) to ensure stable and fast convergence during the model training process.
-*   **Train–Validation–Test Split:** The dataset was strictly split (e.g., 80% Training, 20% Testing) to evaluate the model's accuracy on completely unseen faces and to prevent any data leakage.
+*   **Train–Validation–Test Split:** The unified dataset folder was completely loaded into RAM and mathematically split using `sklearn` at a strict **70% Training / 15% Validation / 15% Test** ratio. The 15% testing paths are explicitly saved to JSON logs to ensure the final evaluation script only runs against strictly unseen data, preventing any data leakage.
 *   **Exploratory Data Analysis (EDA):** We analyzed the distribution of images per identity, checked for class imbalances, and reviewed variations in lighting and posing across the dataset.
 
 ## Deliverables
@@ -46,7 +46,7 @@ ArcFace typically utilizes a deep CNN backbone like the **ResNet skeleton** (e.g
 
 ## 3. Training Strategy, Loss Function, and Optimizer
 *   **Loss Functions:** Triplet Loss (for FaceNet) and Additive Angular Margin Loss (for ArcFace).
-*   **Optimizer Selection:** Adaptive optimizers such as Adam or SGD with momentum to efficiently minimize the chosen loss.
+*   **Optimizer Selection:** Adam Optimizer enhanced with **L2 Regularization (Weight Decay: 1e-4)**. This mathematical penalty prevents the Custom MLP classifier from overfitting our deeply constrained 20-image-per-class dataset.
 *   **Training Strategy:** Defined hyper-parameters including optimal Batch Size (to fit into GPU memory without causing erratic updates), the number of Epochs (to ensure the model converges without overfitting), and the Learning Rate (including step-decay scheduling).
 
 ## Deliverables Status

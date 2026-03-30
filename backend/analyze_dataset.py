@@ -20,8 +20,9 @@ def analyze_dataset():
     """Analyze the dataset structure and generate a report."""
     
     # Configuration
-    dataset_path = Path("data/training_dataset")
-    output_dir = Path("data/analysis_report")
+    BASE_DIR = Path(__file__).resolve().parent
+    dataset_path = BASE_DIR / "data" / "dataset"
+    output_dir = BASE_DIR / "data" / "analysis_report"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"\n{'='*60}")

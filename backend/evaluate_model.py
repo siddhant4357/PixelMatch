@@ -27,13 +27,14 @@ from utils.image_processing import load_image, crop_face, preprocess_face
 import config
 
 # Configuration
-DATASET_PATH = Path("data/test_dataset")
-MODEL_DIR = Path("data/trained_models")
+BASE_DIR = Path(__file__).resolve().parent
+DATASET_PATH = BASE_DIR / "data" / "dataset"
+MODEL_DIR = BASE_DIR / "data" / "trained_models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def load_latest_model(model_dir):
-    """Find and load the most recent model file."""
+    """Find and load the most recent model and its test split."""
     model_files = list(model_dir.glob("face_classifier_*.pth"))
     if not model_files:
         raise FileNotFoundError("No model files found!")
@@ -43,7 +44,21 @@ def load_latest_model(model_dir):
     print(f"Loading model: {latest_model.name}")
     
     checkpoint = torch.load(latest_model, map_location=DEVICE)
-    return checkpoint
+    
+    # Load corresponding log file to get test paths
+    timestamp = latest_model.stem.replace('face_classifier_', '')
+    log_file = model_dir / f"training_log_{timestamp}.json"
+    
+    test_paths = []
+    if log_file.exists():
+        with open(log_file, 'r') as f:
+            log_data = json.load(f)
+            test_paths = log_data.get('test_image_paths', [])
+            print(f"✓ Loaded {len(test_paths)} specific test image paths for this model")
+    else:
+        print(f"Warning: Log file not found {log_file.name}. Cannot find test split.")
+        
+    return checkpoint, test_paths
 
 
 def evaluate():
@@ -53,7 +68,10 @@ def evaluate():
 
     # 1. Load Model
     try:
-        checkpoint = load_latest_model(MODEL_DIR)
+        checkpoint, test_image_paths = load_latest_model(MODEL_DIR)
+        if not test_image_paths:
+            print("❌ No test images found. Please run your new train_model.py first!")
+            return
     except FileNotFoundError as e:
         print(f"Error: {e}")
         return
@@ -77,46 +95,44 @@ def evaluate():
 
     # 3. Process Dataset (Same logic as training to ensure consistency)
     # real-world: you might want a separate 'test_dataset' folder
-    print("\nProcessing dataset for evaluation...")
+    print("\nProcessing the dynamic test split for evaluation...")
     embeddings = []
     y_true = []
     
-    person_folders = sorted([f for f in DATASET_PATH.iterdir() if f.is_dir()])
-    
-    for label_idx, person_folder in enumerate(person_folders):
-        person_name = person_folder.name
-        # Verify this folder matches the label_map from training
-        # Note: This assumes folders haven't changed since training!
-        if label_idx not in label_map or label_map[label_idx] != person_name:
-             print(f"Warning: Folder {person_name} might not match training label {label_idx}")
+    for img_path_str in test_image_paths:
+        img_path = Path(img_path_str)
+        person_name = img_path.parent.name
         
-        image_files = []
-        for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
-            image_files.extend(person_folder.glob(ext))
+        # Look up true label index using the model's mapped dictionary
+        label_idx = None
+        for k, v in label_map.items():
+            if v == person_name:
+                label_idx = k
+                break
+                
+        if label_idx is None:
+            continue
             
-        print(f"  Evaluating {person_name}...")
-        
-        for img_path in image_files:
-            try:
-                # Extract embedding
-                image = load_image(str(img_path))
-                if image is None: continue
-                
-                faces = face_detector.detect_faces(image)
-                if not faces: continue
-                
-                bbox, _ = faces[0]
-                face_img = crop_face(image, bbox)
-                if face_img is None: continue
-                
-                preprocessed = preprocess_face(face_img, config.FACE_SIZE)
-                emb = face_recognizer.generate_embedding(preprocessed, enable_tta=True)
-                
-                if emb is not None:
-                    embeddings.append(emb)
-                    y_true.append(label_idx)
-            except Exception as e:
-                print(f"Error processing {img_path.name}: {e}")
+        try:
+            # Extract embedding
+            image = load_image(str(img_path))
+            if image is None: continue
+            
+            faces = face_detector.detect_faces(image)
+            if not faces: continue
+            
+            bbox, _ = faces[0]
+            face_img = crop_face(image, bbox)
+            if face_img is None: continue
+            
+            preprocessed = preprocess_face(face_img, config.FACE_SIZE)
+            emb = face_recognizer.generate_embedding(preprocessed, enable_tta=True)
+            
+            if emb is not None:
+                embeddings.append(emb)
+                y_true.append(label_idx)
+        except Exception as e:
+            print(f"Error processing {img_path.name}: {e}")
 
     # 4. Predict
     X = torch.FloatTensor(np.array(embeddings)).to(DEVICE)
