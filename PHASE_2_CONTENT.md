@@ -47,7 +47,7 @@ This log maintains the record of data collection activities to ensure verifying 
 | **30 Jan 2026** | Collection (Session 2) | Collected outdoor portraits (Natural Light). | 30 images |
 | **05 Feb 2026** | Data Cleaning | Removed blurred images; resized large files. | -5 images |
 | **08 Feb 2026** | Augmentation Plan | Identified need for side-profile angles. | N/A |
-| **10 Feb 2026** | Finalization | Organized data into `training_dataset` structure. | 100 images |
+| **10 Feb 2026** | Finalization | Organized data into a single unified `dataset` structure for dynamic code-based splitting. | 100 images |
 
 ---
 

@@ -16,11 +16,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 import json
 from datetime import datetime
+
 
 # Add backend to path
 sys.path.append(str(Path(__file__).parent))
@@ -63,6 +65,7 @@ def load_training_data(dataset_path, face_detector, face_recognizer):
     embeddings = []
     labels = []
     label_map = {}
+    image_paths = []
     
     # Get all person folders
     person_folders = sorted([f for f in dataset_path.iterdir() if f.is_dir()])
@@ -79,9 +82,10 @@ def load_training_data(dataset_path, face_detector, face_recognizer):
         label_map[label_idx] = person_name
         
         # Get all images in this person's folder
-        image_files = []
+        image_files = set()
         for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
-            image_files.extend(person_folder.glob(ext))
+            image_files.update(person_folder.glob(ext))
+        image_files = list(image_files)
         
         if not image_files:
             print(f"⚠️  WARNING: No images found for {person_name}")
@@ -115,6 +119,7 @@ def load_training_data(dataset_path, face_detector, face_recognizer):
             if embedding is not None:
                 embeddings.append(embedding)
                 labels.append(label_idx)
+                image_paths.append(str(img_path))
                 person_embeddings += 1
         
         print(f"  ✓ Extracted {person_embeddings} embeddings for {person_name}\n")
@@ -130,7 +135,7 @@ def load_training_data(dataset_path, face_detector, face_recognizer):
     print(f"Label mapping: {label_map}")
     print(f"{'='*60}\n")
     
-    return np.array(embeddings), np.array(labels), label_map
+    return np.array(embeddings), np.array(labels), label_map, image_paths
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
@@ -249,15 +254,16 @@ def save_training_plots(train_losses, val_losses, train_accs, val_accs, save_dir
 def main():
     """Main training pipeline."""
     
-    # Configuration
-    DATASET_PATH = Path("data/training_dataset")
-    OUTPUT_DIR = Path("data/trained_models")
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    BASE_DIR = Path(__file__).resolve().parent
+    DATASET_PATH = BASE_DIR / "data" / "dataset"
+    OUTPUT_DIR = BASE_DIR / "data" / "trained_models"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
     BATCH_SIZE = 16
     NUM_EPOCHS = 50
     LEARNING_RATE = 0.001
-    TRAIN_SPLIT = 0.8
+    TEST_SPLIT = 0.15
+    VAL_SPLIT_OF_REMAINING = 0.1764 # ~15% of total dataset
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\n🖥️  Using device: {device}\n")
@@ -269,27 +275,35 @@ def main():
     print("✓ Models loaded\n")
     
     # Load and process dataset
-    embeddings, labels, label_map = load_training_data(
+    embeddings, labels, label_map, image_paths = load_training_data(
         DATASET_PATH, face_detector, face_recognizer
     )
     
-    # Create dataset and split
-    dataset = FaceDataset(embeddings, labels)
-    train_size = int(TRAIN_SPLIT * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    # 3-way split: 70% Train, 15% Val, 15% Test
+    emb_train_val, emb_test, lab_train_val, lab_test, path_train_val, path_test = train_test_split(
+        embeddings, labels, image_paths, test_size=TEST_SPLIT, random_state=42, stratify=labels
+    )
+    
+    emb_train, emb_val, lab_train, lab_val, path_train, path_val = train_test_split(
+        emb_train_val, lab_train_val, path_train_val, test_size=VAL_SPLIT_OF_REMAINING, random_state=42, stratify=lab_train_val
+    )
+    
+    # Create dataset objects
+    train_dataset = FaceDataset(emb_train, lab_train)
+    val_dataset = FaceDataset(emb_val, lab_val)
     
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     
-    print(f"Train samples: {train_size}")
-    print(f"Validation samples: {val_size}\n")
+    print(f"Train samples: {len(train_dataset)}")
+    print(f"Validation samples: {len(val_dataset)}")
+    print(f"Test samples (reserved for evaluation): {len(path_test)}\n")
     
     # Initialize classifier
     num_classes = len(label_map)
     model = FaceClassifier(input_dim=1024, num_classes=num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
     
     print(f"Model architecture:\n{model}\n")
     
@@ -322,8 +336,10 @@ def main():
         'num_epochs': NUM_EPOCHS,
         'batch_size': BATCH_SIZE,
         'learning_rate': LEARNING_RATE,
-        'train_samples': train_size,
-        'val_samples': val_size,
+        'train_samples': len(train_dataset),
+        'val_samples': len(val_dataset),
+        'test_samples': len(path_test),
+        'test_image_paths': path_test,
         'num_classes': num_classes,
         'label_map': label_map,
         'final_train_acc': train_accs[-1],

@@ -47,5 +47,5 @@ To address the challenge of limited training data, we will employ a **Transfer L
 
 ### **Training Strategy:**
 -   **Loss Function:** Cross-Entropy Loss (standard for multi-class classification).
--   **Optimizer:** Adam Optimizer for adaptive learning rates.
--   **Validation:** Implementation of a Train-Validation split (80-20) to monitor generalization and avoid overfitting.
+-   **Optimizer:** Adam Optimizer (equipped with **L2 Regularization / Weight Decay**) to assertively combat overfitting on the small dataset.
+-   **Data Splitting:** Dynamic in-memory splitting using a strict **70% Training, 15% Validation, 15% Test** ratio to guarantee robust evaluation on completely unseen data.

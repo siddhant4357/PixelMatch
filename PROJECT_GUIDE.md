@@ -39,7 +39,7 @@ The system follows a modular architecture separating the Training Phase from the
 ![System Workflow](assets/workflow.png)
 
 ### **A. Data Pipeline**
-1.  **Input:** Raw images from `backend/data/training_dataset/`.
+1.  **Input:** Raw images from a unified `backend/data/dataset/` directory.
 2.  **Preprocessing:**
     *   **Detection:** MTCNN / Haar Cascade locates the face.
     *   **Alignment & Cropping:** Isolates the face region.
@@ -74,6 +74,7 @@ The training system is a **Hybrid Model**:
     *   Formula: $H(p, q) = -\sum p(x) \log q(x)$
 *   **Optimizer: Adam**
     *   Adaptive Moment Estimation. It adjusts the learning rate for each parameter individually, converging faster than SGD.
+    *   **L2 Regularization (Weight Decay):** 1e-4 explicitly added to penalize the model for memorizing the 100-image dataset (Overfitting Prevention).
     *   **Learning Rate:** 0.001
 *   **Batch Size:** 16
 *   **Epochs:** 50
@@ -121,7 +122,7 @@ The Confusion Matrix visualizes the performance of the algorithm.
 
 *   **Loss Curve:** Should decrease exponentially and plateau. If Validation Loss starts increasing while Training Loss decreases, the model is **Overfitting**.
 *   **Accuracy Curve:** Should increase inversely to the Loss Curve.
-*   **Gap Analysis:** A minimal gap between Training and Validation lines indicates good generalization. Our use of Dropout (0.3) and Augmentation minimizes this gap.
+*   **Gap Analysis:** A minimal gap between Training and Validation lines indicates good generalization. Our dual-defense use of **Dropout (0.3)** and **Adam L2 Regularization** aggressively minimizes this gap to prove we have conquered small-data overfitting.
 
 ---
 
