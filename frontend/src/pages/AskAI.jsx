@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Send, Loader2, AlertCircle, Sparkles, MapPin, Calendar, Download, PackageOpen } from 'lucide-react'
+import { Upload, Send, Loader2, AlertCircle, Sparkles, MapPin, Calendar, Download, PackageOpen, Smartphone, Clock } from 'lucide-react'
 import { uploadSelfieForAI, queryAI, getPhotoUrl } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
+
+const SUGGESTION_CHIPS = [
+    { icon: '📍', label: 'Photos from Jaisalmer', query: 'Show my photos from Jaisalmer' },
+    { icon: '📅', label: 'January photos', query: 'Show my January photos' },
+    { icon: '📱', label: 'iPhone photos', query: 'Show photos from my iPhone' },
+    { icon: '🌄', label: 'All my photos', query: 'Show all my photos' },
+    { icon: '🎉', label: 'Party photos', query: 'Show my party photos' },
+]
 
 const AskAI = () => {
     const navigate = useNavigate()
@@ -34,8 +42,6 @@ const AskAI = () => {
         const file = e.target.files[0]
         if (file) {
             setSelfieFile(file)
-
-            // Create preview
             const reader = new FileReader()
             reader.onload = (e) => setSelfiePreview(e.target.result)
             reader.readAsDataURL(file)
@@ -53,14 +59,12 @@ const AskAI = () => {
             const data = await uploadSelfieForAI(selfieFile)
             setSessionId(data.session_id)
 
-            // Add AI welcome message
             setMessages([{
                 type: 'ai',
-                text: data.message + ' What photos are you looking for?',
+                text: "✅ Got your selfie! Now ask me anything — try \"Show my Jaisalmer photos\", \"Show January photos\", or \"Photos from my iPhone\".",
                 timestamp: new Date().toISOString()
             }])
 
-            // Focus input
             setTimeout(() => inputRef.current?.focus(), 100)
 
         } catch (err) {
@@ -71,15 +75,15 @@ const AskAI = () => {
     }
 
     // Send message to AI
-    const handleSendMessage = async () => {
-        if (!inputMessage.trim() || !sessionId || sending) return
+    const handleSendMessage = async (overrideText = null) => {
+        const userMessage = (overrideText || inputMessage).trim()
+        if (!userMessage || !sessionId || sending) return
 
-        const userMessage = inputMessage.trim()
         setInputMessage('')
         setSending(true)
         setError(null)
 
-        // Add user message
+        // Add user message to chat
         setMessages(prev => [...prev, {
             type: 'user',
             text: userMessage,
@@ -89,15 +93,18 @@ const AskAI = () => {
         try {
             const data = await queryAI(sessionId, userMessage)
 
-            // Add AI response
+            // Add AI response to chat
             setMessages(prev => [...prev, {
                 type: 'ai',
                 text: data.ai_message,
                 timestamp: new Date().toISOString()
             }])
 
-            // Update results
-            setResults(data.photos || [])
+            // Only update results panel when intent is 'search'
+            // If it's a 'chat' response (greetings, help, etc.) keep existing results untouched
+            if (data.intent !== 'chat') {
+                setResults(data.photos || [])
+            }
 
         } catch (err) {
             setError(err.message)
@@ -112,6 +119,11 @@ const AskAI = () => {
         }
     }
 
+    const handleChipClick = (query) => {
+        if (!sessionId || sending) return
+        handleSendMessage(query)
+    }
+
     const handleDownloadAll = async () => {
         if (results.length === 0) return
 
@@ -120,9 +132,6 @@ const AskAI = () => {
             const zip = new JSZip()
             const folder = zip.folder('PixelMatch_AI_Search')
 
-            console.log(`Starting download of ${results.length} photos...`)
-
-            // Fetch all photos and add to ZIP
             for (let i = 0; i < results.length; i++) {
                 const result = results[i]
                 try {
@@ -130,36 +139,25 @@ const AskAI = () => {
                         ? result.photo_path.split(/[/\\]/).pop()
                         : result.photo_name || 'Unknown'
 
-                    console.log(`Downloading ${i + 1}/${results.length}: ${photoName}`)
-
                     const photoUrl = getPhotoUrl(photoName)
-                    const response = await fetch(photoUrl, {
-                        mode: 'cors'
-                    })
+                    const response = await fetch(photoUrl, { mode: 'cors' })
 
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`)
-                    }
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
                     const blob = await response.blob()
-                    console.log(`✓ Downloaded ${photoName} (${blob.size} bytes)`)
                     folder.file(photoName, blob)
                 } catch (err) {
                     console.error(`Failed to download photo:`, err)
                 }
             }
 
-            console.log('Generating ZIP file...')
-            // Generate and download ZIP
             const content = await zip.generateAsync({
                 type: 'blob',
                 compression: 'DEFLATE',
                 compressionOptions: { level: 6 }
             })
 
-            console.log(`ZIP file created: ${content.size} bytes`)
             saveAs(content, `PixelMatch_AI_${results.length}_Photos.zip`)
-            console.log('Download started!')
         } catch (err) {
             console.error('ZIP creation error:', err)
             setError('Failed to create ZIP file: ' + err.message)
@@ -178,8 +176,8 @@ const AskAI = () => {
 
     const aiTips = [
         "💡 Ask me anything about your photos!",
-        "✨ I can search by location, date, or even emotions!",
-        "🎯 Try: 'Show photos from the beach'",
+        "✨ I can search by location, date, or device!",
+        "🎯 Try: 'Show photos from Jaisalmer'",
         "🚀 Processing your request with AI...",
         "💜 Understanding your query..."
     ]
@@ -269,7 +267,7 @@ const AskAI = () => {
                 {sessionId && (
                     <div className="grid lg:grid-cols-2 gap-8">
                         {/* Chat Section */}
-                        <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl overflow-hidden flex flex-col shadow-lg" style={{ height: '600px' }}>
+                        <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl overflow-hidden flex flex-col shadow-lg" style={{ height: '640px' }}>
                             <div className="p-6 border-b border-purple-200">
                                 <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center gap-2">
                                     <Sparkles className="w-6 h-6 text-purple-400" />
@@ -311,6 +309,22 @@ const AskAI = () => {
                                 <div ref={chatEndRef} />
                             </div>
 
+                            {/* Suggestion Chips */}
+                            <div className="px-4 pt-2 pb-1 flex gap-2 overflow-x-auto no-scrollbar border-t border-purple-100 bg-white/30">
+                                {SUGGESTION_CHIPS.map((chip, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => handleChipClick(chip.query)}
+                                        disabled={sending}
+                                        title={chip.query}
+                                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 border border-purple-200 hover:border-purple-400 text-slate-700 hover:text-purple-700 rounded-full text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                                    >
+                                        <span>{chip.icon}</span>
+                                        <span>{chip.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+
                             {/* Input */}
                             <div className="p-4 border-t border-purple-200 bg-white/40 backdrop-blur-sm">
                                 <div className="flex gap-2">
@@ -320,12 +334,12 @@ const AskAI = () => {
                                         value={inputMessage}
                                         onChange={(e) => setInputMessage(e.target.value)}
                                         onKeyPress={handleKeyPress}
-                                        placeholder="Ask about your photos... (e.g., 'Show photos from Paris')"
-                                        className="flex-1 px-4 py-3 bg-white/50 border border-purple-200 rounded-xl text-slate-700 placeholder-slate-500 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                        placeholder="e.g. 'Show my Jaisalmer photos' or 'January photos'"
+                                        className="flex-1 px-4 py-3 bg-white/50 border border-purple-200 rounded-xl text-slate-700 placeholder-slate-400 focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400 text-sm"
                                         disabled={sending}
                                     />
                                     <button
-                                        onClick={handleSendMessage}
+                                        onClick={() => handleSendMessage()}
                                         disabled={!inputMessage.trim() || sending}
                                         className="px-6 py-3 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-md"
                                     >
@@ -336,7 +350,7 @@ const AskAI = () => {
                         </div>
 
                         {/* Results Section */}
-                        <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl overflow-hidden shadow-lg" style={{ height: '600px' }}>
+                        <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl overflow-hidden shadow-lg" style={{ height: '640px' }}>
                             <div className="p-6 border-b border-purple-200">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
@@ -364,20 +378,34 @@ const AskAI = () => {
                                 </div>
                             </div>
 
-                            <div className="overflow-y-auto p-6" style={{ height: 'calc(600px - 80px)' }}>
+                            <div className="overflow-y-auto p-6" style={{ height: 'calc(640px - 88px)' }}>
                                 {results.length === 0 ? (
                                     <div className="text-center text-slate-500 py-12">
-                                        <Sparkles className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                                        <p>Ask AI to find your photos!</p>
-                                        <p className="text-sm mt-2">Try: "Show photos from the beach"</p>
+                                        <Sparkles className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                                        <p className="text-lg font-medium mb-2">No results yet</p>
+                                        <p className="text-sm">Try asking:</p>
+                                        <ul className="text-sm mt-2 space-y-1 text-slate-400">
+                                            <li>📍 "Show my Jaisalmer photos"</li>
+                                            <li>📅 "Show January photos"</li>
+                                            <li>📱 "Photos from my iPhone"</li>
+                                            <li>🌄 "Show all my photos"</li>
+                                        </ul>
                                     </div>
                                 ) : (
                                     <div className="grid gap-4">
                                         {results.map((result, index) => {
-                                            // Extract filename from photo_path
                                             const photoName = result.photo_path
                                                 ? result.photo_path.split(/[/\\]/).pop()
                                                 : result.photo_name || 'Unknown'
+
+                                            // Format timestamp nicely
+                                            let displayDate = null
+                                            if (result.timestamp) {
+                                                try {
+                                                    const d = new Date(result.timestamp.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3'))
+                                                    displayDate = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                                                } catch (_) {}
+                                            }
 
                                             return (
                                                 <div
@@ -387,29 +415,42 @@ const AskAI = () => {
                                                     <img
                                                         src={getPhotoUrl(photoName)}
                                                         alt={photoName}
-                                                        className="w-full h-48 object-cover"
+                                                        className="w-full h-44 object-cover"
                                                     />
-                                                    <div className="p-4">
-                                                        <div className="text-slate-800 font-semibold text-sm mb-2 truncate">
-                                                            {photoName}
-                                                        </div>
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <span className="px-3 py-1 bg-purple-500 text-white rounded-full text-sm font-semibold">
+                                                    <div className="p-3">
+                                                        <div className="text-slate-700 font-semibold text-xs mb-2 truncate">{photoName}</div>
+                                                        
+                                                        {/* Metadata row */}
+                                                        <div className="flex flex-wrap gap-2 mb-3">
+                                                            <span className="px-2 py-0.5 bg-purple-500 text-white rounded-full text-xs font-semibold">
                                                                 {Math.round((result.similarity || 0) * 100)}% match
                                                             </span>
                                                             {result.location_name && (
-                                                                <span className="text-xs text-slate-400 flex items-center gap-1">
+                                                                <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
                                                                     <MapPin className="w-3 h-3" />
                                                                     {result.location_name.split(',')[0]}
                                                                 </span>
                                                             )}
+                                                            {displayDate && (
+                                                                <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    {displayDate}
+                                                                </span>
+                                                            )}
+                                                            {result.camera_make && (
+                                                                <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                                    <Smartphone className="w-3 h-3" />
+                                                                    {result.camera_make}
+                                                                </span>
+                                                            )}
                                                         </div>
+                                                        
                                                         <a
                                                             href={getPhotoUrl(photoName)}
                                                             download
-                                                            className="w-full px-4 py-2 bg-gradient-to-r from-purple-400 to-pink-400 hover:scale-105 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center space-x-2 shadow-md"
+                                                            className="w-full px-4 py-2 bg-gradient-to-r from-purple-400 to-pink-400 hover:scale-105 text-white rounded-lg text-xs font-semibold transition-all flex items-center justify-center space-x-2 shadow-md"
                                                         >
-                                                            <Download className="w-4 h-4" />
+                                                            <Download className="w-3 h-3" />
                                                             <span>Download</span>
                                                         </a>
                                                     </div>

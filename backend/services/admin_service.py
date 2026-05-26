@@ -120,12 +120,20 @@ class AdminService:
             print(f"[UPLOAD] Step 2/5: Extracting EXIF metadata...")
             metadata = EXIFExtractor.extract_metadata(str(photo_path))
             
-            # Store in Location DB if available
+            # Store GPS location if available
             if metadata.get('has_location'):
                 print(f"[UPLOAD] ✓ GPS found: {metadata['latitude']:.4f}, {metadata['longitude']:.4f}")
                 self.location_db.add_location(photo_path.name, metadata)
             else:
                 print(f"[UPLOAD] ℹ No GPS data in photo")
+            
+            # Always store metadata (timestamp + camera info) for ALL photos
+            # This enables date and device filtering even for non-GPS photos
+            self.location_db.add_metadata(photo_path.name, metadata)
+            if metadata.get('timestamp'):
+                print(f"[UPLOAD] ✓ Timestamp stored: {metadata['timestamp']}")
+            if metadata.get('camera_make'):
+                print(f"[UPLOAD] ✓ Device stored: {metadata.get('camera_make')} {metadata.get('camera_model', '')}")
 
             # 3. Detect Faces
             print(f"[UPLOAD] Step 3/5: Detecting faces...")

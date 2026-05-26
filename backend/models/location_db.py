@@ -92,6 +92,41 @@ class LocationDB:
             self._save_db()
             logger.info(f"Added location for {Path(photo_path).name}: "
                        f"{metadata['latitude']:.4f}, {metadata['longitude']:.4f}")
+
+    def add_metadata(self, photo_path: str, metadata: Dict):
+        """
+        Store ALL EXIF metadata for a photo, even if it has no GPS.
+        This ensures timestamp and device info are available for date/device filtering.
+        Merges with existing data if photo already has an entry (e.g. from add_location).
+        
+        Args:
+            photo_path: Path to the photo (or just filename — must match what vector_db uses)
+            metadata: Metadata dictionary from EXIF extractor
+        """
+        existing = self.locations.get(photo_path, {})
+        
+        entry = {
+            # Preserve existing GPS data if already set
+            'latitude': existing.get('latitude') or (
+                float(metadata['latitude']) if metadata.get('latitude') is not None else None
+            ),
+            'longitude': existing.get('longitude') or (
+                float(metadata['longitude']) if metadata.get('longitude') is not None else None
+            ),
+            'location_name': existing.get('location_name') or metadata.get('location_name'),
+            'altitude': existing.get('altitude') or (
+                float(metadata['altitude']) if metadata.get('altitude') is not None else None
+            ),
+            # Always update timestamp and device info
+            'timestamp': str(metadata.get('timestamp')) if metadata.get('timestamp') else existing.get('timestamp'),
+            'camera_make': str(metadata.get('camera_make')) if metadata.get('camera_make') else existing.get('camera_make'),
+            'camera_model': str(metadata.get('camera_model')) if metadata.get('camera_model') else existing.get('camera_model'),
+        }
+        
+        self.locations[photo_path] = entry
+        self._save_db()
+        logger.debug(f"Stored metadata for {Path(photo_path).name}: "
+                     f"ts={entry.get('timestamp')}, device={entry.get('camera_make')} {entry.get('camera_model')}")
     
     def search_by_location(
         self,
