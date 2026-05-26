@@ -1,41 +1,37 @@
-# PixelMatch - AI-Powered Smart Photo Search & Academic Face Recognition 📸🤖
+# PixelMatch - AI-Powered Smart Photo Search 📸🤖
 
-**Find your photos instantly using AI-powered natural language search, advanced facial recognition, and study state-of-the-art deep learning concepts!**
+**Find your photos instantly using AI-powered natural language search and advanced facial recognition.**
 
-Perfect for events, weddings, conferences, and gatherings with thousands of photos. Upload a selfie, ask questions like *"Show my photos from Paris in January"*, and get instant results. 
-
-This repository also houses our academic research and training pipeline for **Deep Learning: Principles and Practices (ECSCI24305)**, demonstrating the practical application of transfer learning in data-constrained environments.
+Perfect for events, weddings, conferences, and gatherings with thousands of photos. Upload a selfie, ask questions like *"Show my photos from Paris in January"*, and get instant results.
 
 <div align="center">
 
 ![PixelMatch Homepage](./assets/homepage.png)
 
-**⚡ Powered by AI • Built for Scale • Designed for Privacy • Academic Grade ⚡**
+**⚡ Powered by AI • Built for Scale • Designed for Privacy ⚡**
 
 </div>
 
 ---
 
-## 🎓 Academic & Project Context
+## 🧠 Project Overview
 
-### **Course & Domain**
-- **Course**: Deep Learning: Principles and Practices (ECSCI24305)
-- **Project Title**: End-to-End Face Recognition System for Smart Campus Events
-- **Domain**: Computer Vision / Deep Learning
+### **What is PixelMatch?**
+PixelMatch is a production-grade AI photo search platform. It operates across two main phases: a **Model Training Pipeline** (custom face classifier) and a **Live Deployment** (vector similarity search at scale).
 
 ### **Project Abstract**
-The objective of **PixelMatch** is to develop a robust Face Recognition system capable of identifying individuals from a custom dataset with high accuracy. The system overcomes real-world challenges such as varying lighting conditions, facial expressions, and poses, using a limited number of training samples (15–20 images per class). It integrates a Python-based training pipeline with a modern web application for real-time deployment.
+PixelMatch develops a robust Face Recognition system capable of identifying individuals from a custom dataset with high accuracy. The system overcomes real-world challenges such as varying lighting conditions, facial expressions, and poses, using a limited number of training samples . It integrates a Python-based training pipeline with a modern web application for real-time deployment.
 
 > [!NOTE]
 > **Core Philosophy**
 > *"Deep learning is not about models alone—it is about data, design, and decisions."*
 > This project demonstrates the practical application of **Transfer Learning** to solve a data-constrained problem, moving beyond standard toy datasets to real-world data collection and production-grade deployment.
 
-### **Methodology: Why this Approach?**
+### **Methodology: Why Transfer Learning?**
 
 #### **The Challenge: Small Data**
 Deep Learning models (like CNNs) typically require thousands of images to learn feature hierarchies (edges -> shapes -> eyes -> faces).
-* **Problem**: We only have ~20 photos per person.
+* **Problem**: We only have ~100 photos per person.
 * **Result**: Training a CNN from scratch would lead to severe **Overfitting** (memorizing the training data but failing on new photos).
 
 #### **The Solution: Transfer Learning (Feature Extraction)**
@@ -48,7 +44,7 @@ We utilize a pre-trained **FaceNet (Inception-ResNet v1)** model as a feature ex
 
 ## 🏗️ System Architecture & Data Flow
 
-PixelMatch is a sophisticated AI-powered photo search platform that operates across two main operational phases: the **Model Training & Academic Phase** and the **Production Deployment & Vector Search Phase**.
+PixelMatch is a sophisticated AI-powered photo search platform that operates across two main operational phases: the **Model Training Pipeline** and the **Production Deployment & Vector Search Phase**.
 
 ![PixelMatch Architecture](./assets/architecture.png)
 
@@ -70,8 +66,8 @@ User AI Query → Groq AI Parser → Location/Date/Keyword Extraction → Filter
 
 ---
 
-### B. Custom Classifier Model Architecture (Academic Head)
-To satisfy academic requirements for closed-set training, we train a custom **Multi-Layer Perceptron (MLP) Classifier** on top of frozen embeddings:
+### B. Custom Classifier Model Architecture
+For closed-set identification, we train a custom **Multi-Layer Perceptron (MLP) Classifier** on top of frozen FaceNet embeddings:
 
 ![Neural Network Architecture](./assets/neoron_architecture.png)
 
@@ -122,15 +118,15 @@ SuperVector = [0.7 × V_ArcFace, 0.3 × V_FaceNet512]
 - **Threshold**: 0.50 (configurable).
 - **Performance**: Sub-millisecond matching across thousands of photos.
 
-#### **Why Vector Search?**
-While the MLP Classifier fulfills the academic requirement for "Model Training," the production website utilizes **Vector Similarity Search (FAISS)**.
-* **Zero-Shot Learning**: The MLP is a "Closed-Set" classifier (only knows the 5 people it was trained on). Adding a 6th person requires re-training.
-* **Vector Search is "Open-Set"**: It stores embeddings in a database. To add a new person, we simply store their embedding. No training required.
+#### **Why Vector Search over the Classifier?**
+While the MLP Classifier works well for closed-set recognition, the production website uses **Vector Similarity Search (FAISS)** for greater flexibility.
+* **Zero-Shot Learning**: The MLP is a "Closed-Set" classifier (only knows the people it was trained on). Adding a new person requires re-training.
+* **Vector Search is "Open-Set"**: It stores embeddings in a database. To add a new person, simply store their embedding — no training required.
 * **Scalability**: FAISS (Facebook AI Similarity Search) is optimized to search millions of vectors in milliseconds, making the system scalable for large events.
 
 ---
 
-## 🛠️ Model Training & Fine-Tuning (Academic Pipeline)
+## 🛠️ Model Training & Fine-Tuning
 
 This pipeline allows you to train the custom classifier head using your own dataset of selfies/portraits.
 
@@ -144,7 +140,7 @@ We set up template folders in `backend/data/training_dataset/`:
 
 **Instructions**:
 1. Rename these folders to the actual names of the participants (e.g., `Rahul`, `Priya`, `Siddhant`).
-2. Add **15–20 single-person photos** (selfies, high-quality portraits, different expressions/lighting) into each folder.
+2. Add **100-120 single-person photos** (selfies, high-quality portraits, different expressions/lighting) into each folder.
 3. Supported formats: `.jpg`, `.jpeg`, `.png`.
 
 ---
@@ -190,9 +186,9 @@ You will see:
 
 ---
 
-## 📊 Model Evaluation & Metrics (Academic Deliverables)
+## 📊 Model Evaluation & Metrics
 
-To satisfy the **Evaluation and Results (Phase 5)** deliverables, we provide both a Jupyter Notebook and CLI scripts to run testing and export visual metrics.
+Both a Jupyter Notebook and CLI scripts are provided to run testing and export visual metrics.
 
 ### 1. Using the Evaluation Notebook
 1. Open the Jupyter Notebook `model_evaluation.ipynb` in VS Code or JupyterLab.
@@ -212,7 +208,7 @@ This generates:
 
 ---
 
-### 3. Deep Dive into Evaluation Metrics
+### 3. Evaluation Metrics
 
 > [!WARNING]
 > **Warning: Regression Metrics are Mathematically Invalid for Classification**
@@ -371,19 +367,17 @@ git push origin main
 
 ---
 
-## 🎓 Summary of Achievements & Checklist
+## ✅ Feature Checklist
 
-The following table summarizes the implementation status matching our Course requirements:
-
-| PBL Phase Requirement | Implementation Detail | Status |
+| Feature | Implementation | Status |
 | :--- | :--- | :--- |
-| **Problem Formulation** | Face Recognition for Smart Campus / Event Management | Completed ✅ |
-| **Dataset Collection** | Custom dataset of 5 individuals (100+ images) | Completed ✅ |
-| **Data Preprocessing** | RetinaFace/MTCNN, 160x160 resizing, StandardScaler | Completed ✅ |
-| **Model Selection** | Inception-ResNet v1 (FaceNet) + Custom MLP Head | Completed ✅ |
-| **Training Strategy** | Adam Optimizer, Cross-Entropy Loss, Dropout, L2 Regularization | Completed ✅ |
-| **Model Evaluation** | Accuracy, Precision, Recall, F1-Score, Confusion Matrix | Completed ✅ |
-| **Deployment** | FastAPI Backend, Vector Similarity Search (FAISS), React Frontend | Completed ✅ |
+| **Problem Formulation** | Face Recognition for Event / Smart Photo Management | ✅ |
+| **Dataset Collection** | Custom dataset of 5 individuals (100+ images) | ✅ |
+| **Data Preprocessing** | RetinaFace/MTCNN, 160x160 resizing, StandardScaler | ✅ |
+| **Model Selection** | Inception-ResNet v1 (FaceNet) + Custom MLP Head | ✅ |
+| **Training Strategy** | Adam Optimizer, Cross-Entropy Loss, Dropout, L2 Regularization | ✅ |
+| **Model Evaluation** | Accuracy, Precision, Recall, F1-Score, Confusion Matrix | ✅ |
+| **Deployment** | FastAPI Backend, Vector Similarity Search (FAISS), React Frontend | ✅ |
 
 ---
 
