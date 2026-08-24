@@ -12,7 +12,7 @@ const Guest = () => {
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
-  const [threshold, setThreshold] = useState(0.50)  // Match backend default
+  const [threshold, setThreshold] = useState(0.45)  // Match backend default (ArcFace)
   const [maxResults, setMaxResults] = useState(50)
   const [downloading, setDownloading] = useState(false)
 

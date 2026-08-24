@@ -3,28 +3,44 @@ PixelMatch Backend API
 FastAPI application for facial recognition-based photo retrieval.
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, BackgroundTasks, Header, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, BackgroundTasks, Header, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Optional
 import uvicorn
 import uuid
+import numpy as np
+import base64
 from pathlib import Path
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_service import get_admin_service, AdminService
 from services.guest_service import get_guest_service, GuestService
 from services.ai_search_service import get_ai_search_service, AISearchService
 from services.room_service import get_room_service, RoomService
 from services.drive_service import get_drive_service
+from services.auth_service import get_current_user
+from services.user_service import user_service
+from db.database import init_db, get_db
 
 import config
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await init_db()
+    yield
+    # Shutdown (if needed)
 
 # Create FastAPI app
 app = FastAPI(
     title="PixelMatch API",
     description="Facial recognition-based photo retrieval system",
-    version="1.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -36,88 +52,174 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # --- Dependency Injection for Room Context ---
-
 async def get_current_room_admin_service(
     x_room_id: str = Header(None, alias="X-Room-ID")
 ) -> AdminService:
-    """Dependency: Get AdminService context-aware of the Room ID header."""
     return get_admin_service(x_room_id)
-
 
 async def get_current_room_guest_service(
     x_room_id: str = Header(None, alias="X-Room-ID")
 ) -> GuestService:
-    """Dependency: Get GuestService context-aware of the Room ID header."""
     return get_guest_service(x_room_id)
-
 
 async def get_current_room_ai_service(
     x_room_id: str = Header(None, alias="X-Room-ID")
 ) -> AISearchService:
-    """Dependency: Get AISearchService context-aware of the Room ID header."""
-    # AI service needs room context for location db and vector db
     return get_ai_search_service(x_room_id)
 
 
-# --- Room Endpoints ---
+# --- Auth Endpoints (Phase 2) ---
+
+@app.get("/auth/profile")
+async def get_profile(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    has_embedding = await user_service.has_embedding(user['id'], db)
+    return {
+        "user": user,
+        "has_embedding": has_embedding
+    }
+
+@app.post("/auth/upload-selfie")
+async def upload_selfie(
+    selfie: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from models.face_detection import detect_single_face_in_image
+    from utils.image_processing import load_image_from_bytes, crop_face
+    
+    file_bytes = await selfie.read()
+    image = load_image_from_bytes(file_bytes)
+    
+    # Actually wait, our new detect_faces_in_image doesn't return embedding in the old signature.
+    # Let's use the detector directly.
+    from models.face_detection import FaceDetector
+    detector = FaceDetector()
+    faces = detector.detect_faces(image)
+    
+    if not faces:
+        raise HTTPException(status_code=400, detail="No face detected in the image")
+        
+    face = faces[0] # Largest face
+    bbox, confidence, landmarks, embedding = face
+    
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="Failed to extract face embedding")
+        
+    # Create thumbnail
+    import cv2
+    face_img = crop_face(image, bbox)
+    thumb = cv2.resize(face_img, (100, 100))
+    _, buffer = cv2.imencode('.jpg', cv2.cvtColor(thumb, cv2.COLOR_RGB2BGR))
+    thumb_b64 = base64.b64encode(buffer).decode('utf-8')
+    
+    await user_service.save_embedding(user['id'], embedding, thumb_b64, db)
+    return {"success": True, "message": "Selfie saved successfully"}
+
+@app.put("/auth/update-selfie")
+async def update_selfie(
+    selfie: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Same as upload
+    return await upload_selfie(selfie, user, db)
+
+@app.delete("/auth/delete-data")
+async def delete_my_data(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await user_service.delete_user_data(user['id'], db)
+    return {"success": True, "message": "All selfie data deleted"}
+
+
+# --- Room Endpoints (Phase 2) ---
 
 class CreateRoomRequest(BaseModel):
     event_name: str
-    password: str = None
-
-class ResetDatabaseRequest(BaseModel):
-    password: str = None
+    password: Optional[str] = None
 
 class JoinRoomRequest(BaseModel):
-    room_id: str
+    room_code: str
 
 @app.post("/api/rooms/create")
-async def create_room(request: CreateRoomRequest):
-    """Create a new event room."""
+async def create_room(
+    request: CreateRoomRequest, 
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     service = get_room_service()
-    return service.create_room(request.event_name, request.password)
+    return await service.create_room(request.event_name, user['id'], db)
 
 @app.post("/api/rooms/join")
-async def join_room(request: JoinRoomRequest):
-    """Validate and join a room."""
+async def join_room(
+    request: JoinRoomRequest, 
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     service = get_room_service()
-    room = service.get_room(request.room_id)
+    try:
+        room = await service.join_room(request.room_code, user['id'], db)
+        return room
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/rooms/my-rooms")
+async def get_my_rooms(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = get_room_service()
+    return await service.get_user_rooms(user['id'], db)
+
+@app.get("/api/rooms/{room_code}")
+async def get_room_details(
+    room_code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    service = get_room_service()
+    room = await service.get_room(room_code, db)
     if not room:
-        raise HTTPException(status_code=404, detail="Room not found. Check the ID and try again.")
+        raise HTTPException(status_code=404, detail="Room not found")
     return room
+
+@app.get("/api/rooms/{room_code}/consent")
+async def check_consent(
+    room_code: str,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from services.privacy_service import privacy_service
+    service = get_room_service()
+    room = await service.get_room(room_code, db)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    has_consent = await privacy_service.has_consent(user['id'], room['id'], db)
+    return {"has_consent": has_consent}
+
+@app.post("/api/rooms/{room_code}/consent")
+async def grant_consent(
+    room_code: str,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from services.privacy_service import privacy_service
+    service = get_room_service()
+    room = await service.get_room(room_code, db)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    await privacy_service.create_consent(user['id'], room['id'], db)
+    return {"success": True, "message": "Consent recorded"}
 
 
 # --- General Endpoints ---
 
-@app.post("/admin/import-drive")
-async def import_drive(
-    request: dict, # {"url": "..."}
-    background_tasks: BackgroundTasks,
-    drive_service = Depends(get_drive_service),
-    x_room_id: str = Header(None, alias="X-Room-ID")
-):
-    url = request.get("url")
-    if not url:
-        raise HTTPException(status_code=400, detail="URL required")
-    
-    task_id = str(uuid.uuid4())
-    background_tasks.add_task(drive_service.process_drive_link, url, task_id, x_room_id)
-    
-    return {"task_id": task_id, "message": "Background processing started"}
-
 @app.get("/")
 async def root():
-    return {
-        "message": "PixelMatch API",
-        "version": "2.0.0", # Bumped version for Rooms support
-        "status": "active"
-    }
+    return {"message": "PixelMatch API", "version": "2.0.0", "status": "active"}
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {"status": "healthy"}
 
 @app.get("/ping")
@@ -125,54 +227,40 @@ async def ping():
     return {"status": "ok"}
 
 
-# --- Admin Endpoints ---
+# --- Admin Endpoints (Photos) ---
+# Keeping X-Room-ID for now as frontend still uses it for photo upload
 
 @app.post("/admin/upload")
 async def admin_upload(
     files: List[UploadFile] = File(...),
-    admin_service: AdminService = Depends(get_current_room_admin_service)
+    admin_service: AdminService = Depends(get_current_room_admin_service),
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Admin endpoint: Upload bulk photos for processing.
-    """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
     
-    # Validate file types
-    for file in files:
-        if not config.is_allowed_file(file.filename):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid file type: {file.filename}. Allowed: {config.ALLOWED_EXTENSIONS}"
-            )
-    
-    # Read file bytes
     photo_files = []
     for file in files:
         file_bytes = await file.read()
-        
-        # Check file size
         if len(file_bytes) > config.MAX_UPLOAD_SIZE_BYTES:
-             raise HTTPException(
-                status_code=400,
-                detail=f"File {file.filename} exceeds maximum size of {config.MAX_UPLOAD_SIZE_MB}MB"
-            )
-        
+             raise HTTPException(status_code=400, detail=f"File {file.filename} exceeds max size")
         photo_files.append((file.filename, file_bytes))
     
-    # Process photos
     results = await admin_service.process_bulk_upload(photo_files)
     
-    return {
-        "message": "Photos processed successfully",
-        "statistics": results
-    }
+    # Update photo count in DB
+    if results['successful'] > 0 and admin_service.room_id:
+        from sqlalchemy import text
+        await db.execute(
+            text("UPDATE rooms SET photo_count = photo_count + :count WHERE room_code = :room_code"),
+            {"count": results['successful'], "room_code": admin_service.room_id}
+        )
+        await db.commit()
+        
+    return {"message": "Photos processed successfully", "statistics": results}
 
 @app.get("/admin/stats")
-async def get_stats(
-    admin_service: AdminService = Depends(get_current_room_admin_service)
-):
-    """Admin endpoint: Get database statistics."""
+async def get_stats(admin_service: AdminService = Depends(get_current_room_admin_service)):
     return admin_service.get_database_stats()
 
 @app.delete("/admin/photos/{filename}")
@@ -180,279 +268,176 @@ async def delete_photo(
     filename: str,
     admin_service: AdminService = Depends(get_current_room_admin_service)
 ):
-    """Admin endpoint: Delete a photo and its embeddings."""
-    # We need to resolve the path relative to the room (or global)
-    # The service expects a path string. 
-    # But wait, admin_service.delete_photo expects the full path string stored in vector DB.
-    # The vector DB stores whatever path we gave it.
-    # In process_bulk_upload, we construct path: self.upload_dir / filename
-    
     photo_path = admin_service.upload_dir / filename
-    
     result = admin_service.delete_photo(str(photo_path))
-    
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error', 'Deletion failed'))
-    
     return result
 
 @app.post("/admin/database/reset")
 async def reset_database(
-    request: ResetDatabaseRequest,
     admin_service: AdminService = Depends(get_current_room_admin_service),
     x_room_id: str = Header(None, alias="X-Room-ID")
 ):
-    """
-    Admin endpoint: Reset the database for the current room context.
-    WARNING: This deletes all face embeddings and photos!
-    Requires password verification.
-    """
     if not x_room_id:
         raise HTTPException(status_code=400, detail="Room ID required")
-
-    # Verify password
-    room_service = get_room_service()
-    if not room_service.verify_password(x_room_id, request.password):
-        raise HTTPException(status_code=403, detail="Invalid room password")
-
     result = admin_service.reset_database()
-    
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error', 'Reset failed'))
-    
     return result
 
 
-# --- Guest Endpoints ---
+# --- Guest Endpoints (Search) ---
 
 @app.post("/guest/search")
-async def guest_search(
-    selfie: UploadFile = File(...),
-    top_k: int = Form(default=50),
-    similarity_threshold: float = Form(default=None),
+async def guest_search_authenticated(
+    top_k: int = Query(default=50),
+    similarity_threshold: Optional[float] = Query(default=None),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     guest_service: GuestService = Depends(get_current_room_guest_service)
 ):
-    """
-    Guest endpoint: Upload selfie and search for matching photos.
-    """
-    # Validate file type
+    """Authenticated guest search using DB embedding."""
+    embedding = await user_service.get_embedding(user['id'], db)
+    if embedding is None:
+        raise HTTPException(status_code=400, detail="No selfie found for user. Please complete onboarding.")
+        
+    results = await guest_service.search_photos_by_embedding(
+        embedding=embedding,
+        top_k=top_k,
+        similarity_threshold=similarity_threshold
+    )
+    return results
+
+@app.post("/guest/search-with-selfie")
+async def guest_search_with_selfie(
+    selfie: UploadFile = File(...),
+    top_k: int = Form(default=50),
+    similarity_threshold: Optional[float] = Form(default=None),
+    guest_service: GuestService = Depends(get_current_room_guest_service)
+):
+    """Legacy/One-off guest search using uploaded file."""
     if not config.is_allowed_file(selfie.filename):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type. Allowed: {config.ALLOWED_EXTENSIONS}"
-        )
+        raise HTTPException(status_code=400, detail="Invalid file type")
     
     selfie_bytes = await selfie.read()
-    
-    if len(selfie_bytes) > config.MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File exceeds maximum size of {config.MAX_UPLOAD_SIZE_MB}MB"
-        )
-    
-    # Search
     results = await guest_service.search_photos_by_selfie(
         selfie_bytes=selfie_bytes,
         filename=selfie.filename,
         top_k=top_k,
         similarity_threshold=similarity_threshold
     )
-    
-    if not results['success']:
-        raise HTTPException(status_code=400, detail=results.get('error', 'Search failed'))
-    
     return results
 
-@app.post("/guest/validate")
-async def guest_validate(
-    selfie: UploadFile = File(...),
-    guest_service: GuestService = Depends(get_current_room_guest_service)
-):
-    """Guest endpoint: Validate selfie before search."""
-    if not config.is_allowed_file(selfie.filename):
-        raise HTTPException(status_code=400, detail="Invalid file type")
+@app.get("/guest/photos/{room_code}/{filename}")
+async def get_photo_in_room(room_code: str, filename: str):
+    from services.room_service import get_room_service
+    from services.storage_service import get_storage_service
+    from fastapi.responses import RedirectResponse
     
-    selfie_bytes = await selfie.read()
-    result = guest_service.validate_selfie(selfie_bytes)
+    room_path = get_room_service().get_room_path(room_code)
+    photo_path = room_path / "uploads" / filename
     
-    if not result['valid']:
-        raise HTTPException(status_code=400, detail=result.get('error', 'Invalid selfie'))
-    
-    return result
+    if photo_path.exists():
+        return FileResponse(photo_path)
+        
+    # Fallback to cloud storage
+    storage = get_storage_service()
+    if storage.is_configured:
+        object_key = f"{room_code.upper()}/{filename}"
+        url = storage.get_presigned_url(object_key)
+        if url:
+            return RedirectResponse(url)
+            
+    raise HTTPException(status_code=404, detail="Photo not found")
 
-
-
-
-# ...
-
-@app.get("/photos/{filename}")
+@app.get("/guest/photos/{filename}")
 async def get_photo(
     filename: str,
-    x_room_id: str = Header(None, alias="X-Room-ID"),
-    room_id: str = Query(None)
+    guest_service: GuestService = Depends(get_current_room_guest_service)
 ):
-    """
-    Get a photo file by filename. 
-    Context-aware: looks in room folder if room ID provided (via Header or Query).
-    """
-    actual_room_id = x_room_id or room_id
+    from services.room_service import get_room_service
+    from services.storage_service import get_storage_service
+    from fastapi.responses import RedirectResponse
     
-    if actual_room_id:
-        room_service = get_room_service()
-        room_path = room_service.get_room_path(actual_room_id)
-        if not room_path:
-             raise HTTPException(status_code=404, detail="Room not found")
-        photo_path = room_path / "uploads" / filename
-    else:
-        photo_path = config.UPLOAD_DIR / filename
+    # Fallback if room_id is found from header, else default
+    room_id = guest_service.room_id or "default"
+    room_path = get_room_service().get_room_path(room_id)
+    photo_path = room_path / "uploads" / filename
     
-    if not photo_path.exists():
-        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo_path.exists():
+        return FileResponse(photo_path)
+        
+    # Fallback to cloud storage
+    storage = get_storage_service()
+    if storage.is_configured:
+        object_key = f"{room_id.upper()}/{filename}"
+        url = storage.get_presigned_url(object_key)
+        if url:
+            return RedirectResponse(url)
+            
+    raise HTTPException(status_code=404, detail="Photo not found")
+
+from pydantic import BaseModel
+class DownloadZipRequest(BaseModel):
+    filenames: List[str]
+
+@app.post("/guest/photos/{room_code}/download-zip")
+async def download_zip(room_code: str, request: DownloadZipRequest):
+    import zipfile
+    import io
+    from services.room_service import get_room_service
+    from services.storage_service import get_storage_service
+    from fastapi.responses import StreamingResponse
     
-    # Create FileResponse with CORS headers for ZIP download support
-    response = FileResponse(
-        path=str(photo_path),
-        media_type="image/jpeg",
-        filename=filename
+    room_path = get_room_service().get_room_path(room_code)
+    upload_dir = room_path / "uploads"
+    storage = get_storage_service()
+    
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+        for filename in request.filenames:
+            photo_path = upload_dir / filename
+            if photo_path.exists():
+                zip_file.write(photo_path, filename)
+            elif storage.is_configured:
+                # Fallback to cloud
+                object_key = f"{room_code.upper()}/{filename}"
+                file_bytes = storage.get_file_bytes(object_key)
+                if file_bytes:
+                    zip_file.writestr(filename, file_bytes)
+    
+    zip_buffer.seek(0)
+    
+    return StreamingResponse(
+        iter([zip_buffer.getvalue()]), 
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=photos_{room_code}.zip"}
     )
-    
-    # Add CORS headers to allow fetch from frontend
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    
-    return response
 
-
-# --- AI Search Endpoints ---
-
-class AIQueryRequest(BaseModel):
-    session_id: str
-    query: str
-
-@app.post("/guest/ai-search/upload-selfie")
-async def ai_search_upload_selfie(
-    selfie: UploadFile = File(...),
-    guest_service: GuestService = Depends(get_current_room_guest_service),
+# --- AI Endpoints ---
+@app.post("/ai/query")
+async def ai_query(
+    request: dict,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     ai_service: AISearchService = Depends(get_current_room_ai_service)
 ):
-    """
-    AI Search: Upload selfie and create search session.
-    """
-    if not config.is_allowed_file(selfie.filename):
-        raise HTTPException(status_code=400, detail="Invalid file type")
+    query = request.get("query")
     
-    selfie_bytes = await selfie.read()
-    
-    # 1. Validate Face via Guest Service
-    validation = guest_service.validate_selfie(selfie_bytes)
-    if not validation['valid']:
-        raise HTTPException(status_code=400, detail=validation.get('error', 'No face detected'))
-    
-    # 2. Generate Embedding (using code from Main logic or helper)
-    # We can reuse the logic from GuestService or do it here.
-    # To keep it DRY, let's duplicate the logic slightly or see if GuestService can give us embedding.
-    # GuestService doesn't expose embedding generation directly in public API efficiently (it does search).
-    # We can use the lower level models directly since we are in backend.
-    
-    from utils.image_processing import load_image_from_bytes, crop_face, preprocess_face
-    from models.face_recognition import get_facenet_model
-    
-    image = load_image_from_bytes(selfie_bytes)
-    faces = guest_service.face_detector.detect_faces(image)
-    if not faces:
-         raise HTTPException(status_code=400, detail="No face detected")
-    
-    bbox, confidence = faces[0]
-    face_img = crop_face(image, bbox)
-    preprocessed = preprocess_face(face_img, config.FACE_SIZE)
-    
-    facenet = get_facenet_model()
-    embedding = facenet.generate_embedding(preprocessed, enable_tta=True)
+    if not query:
+         raise HTTPException(status_code=400, detail="Query is required")
+         
+    # Fetch user's stored embedding
+    from services.user_service import user_service
+    embedding = await user_service.get_embedding(user['id'], db)
     
     if embedding is None:
-        raise HTTPException(status_code=500, detail="Failed to generate embedding")
-        
-    # 3. Create Session
-    session_id = ai_service.create_session(
-        face_embedding=embedding.tolist(),
-        selfie_filename=selfie.filename
-    )
-    
-    return {
-        'success': True,
-        'session_id': session_id,
-        'message': 'Session created.',
-        'face_detected': True
-    }
-
-@app.post("/guest/ai-search/query")
-async def ai_search_query(
-    request: AIQueryRequest,
-    ai_service: AISearchService = Depends(get_current_room_ai_service)
-):
-    """
-    AI Search: Process natural language query and search photos.
-    """
-    result = ai_service.search_photos(
-        session_id=request.session_id,
-        user_query=request.query
-    )
-    
-    if not result['success']:
-        raise HTTPException(status_code=400, detail=result.get('error', 'Search failed'))
-    
-    return result
-
-@app.get("/guest/ai-search/locations")
-async def get_available_locations(
-    ai_service: AISearchService = Depends(get_current_room_ai_service)
-):
-    """
-    Get all available photo locations for AI context.
-    """
-    # ai_service has location_db
-    locations = ai_service.location_db.get_all_locations()
-    return {
-        'success': True,
-        'locations': locations,
-        'count': len(locations)
-    }
-
-@app.get("/admin/stats/metadata")
-async def get_metadata_stats(
-    admin_service: AdminService = Depends(get_current_room_admin_service)
-):
-    """
-    Get metadata statistics.
-    """
-    location_db = admin_service.location_db
-    stats = location_db.get_stats()
-    locations = location_db.get_all_locations()
-    return {
-        'success': True,
-        'stats': stats,
-        'locations': locations[:10]
-    }
-
-
-# --- Google Drive Routes (Admin) ---
-# Note: Google Drive Service might need room awareness too if it saves files.
-# But for now let's assume it downloads to a temp folder and then calls AdminService.
-# If AdminService is injected, it should be the room-aware one.
-
-# We need to check services/drive_service.py to see how it calls AdminService.
-# It probably calls get_admin_service() directly, which would get the 'default' one.
-# This is a caveat. Google Drive import might need refactoring to accept room_id.
-# For now, let's leave it as is, or pass room_id in the request and forward it.
+         raise HTTPException(status_code=400, detail="No selfie found for user. Please complete onboarding.")
+         
+    # search_photos handles the AI querying and photo searching
+    results = ai_service.search_photos(embedding, query)
+    return results
 
 if __name__ == "__main__":
-    print(f"Starting PixelMatch API on {config.HOST}:{config.PORT}")
-    print(f"Room Mode: Enabled")
-    
-    uvicorn.run(
-        "main:app",
-        host=config.HOST,
-        port=config.PORT,
-        reload=True
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

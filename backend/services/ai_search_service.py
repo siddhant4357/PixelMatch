@@ -450,20 +450,15 @@ Examples:
     
     def search_photos(
         self,
-        session_id: str,
+        face_embedding: List[float],
         user_query: str
     ) -> Dict:
         """
         Main search function combining AI understanding + photo search.
         """
-        session = self.get_session(session_id)
-        if not session:
-            return {
-                'success': False,
-                'error': 'Session expired. Please upload your selfie again.'
-            }
         
-        face_embedding = session['face_embedding']
+        # We don't have chat history anymore in session, so just create an empty list or ignore it
+        chat_history = []
         
         # Get available locations
         all_locations = self.location_db.get_all_locations()
@@ -479,7 +474,7 @@ Examples:
         # --- SHORT-CIRCUIT: Conversational / Chat intent ---
         if criteria.get('intent') == 'chat':
             chat_reply = criteria.get('chat_reply') or "Hello! 👋 Ask me to find your photos. Try: \"Show my Jaisalmer photos\" or \"Show January photos\"."
-            session['chat_history'].append({
+            chat_history.append({
                 'user': user_query,
                 'ai': chat_reply,
                 'timestamp': datetime.now().isoformat()
@@ -531,7 +526,7 @@ Examples:
         # Step 5: Generate AI response
         ai_message = self.generate_ai_response(user_query, face_matches, criteria)
         
-        session['chat_history'].append({
+        chat_history.append({
             'user': user_query,
             'ai': ai_message,
             'timestamp': datetime.now().isoformat()

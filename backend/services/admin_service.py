@@ -13,6 +13,7 @@ from models.face_detection import FaceDetector
 from models.face_recognition import get_facenet_model
 from models.vector_db import get_vector_db
 from models.location_db import get_location_db
+from models.quality_scorer import FaceQualityScorer
 from utils.image_processing import (
     load_image,
     crop_face,
@@ -33,6 +34,7 @@ class AdminService:
         # Models are stateless/shared
         self.face_detector = FaceDetector()
         self.face_recognizer = get_facenet_model()
+        self.quality_scorer = FaceQualityScorer()
         
         # Databases are stateful (per room)
         self.vector_db = get_vector_db(room_id)
@@ -55,6 +57,22 @@ class AdminService:
         try:
             with open(photo_path, 'wb') as f:
                 f.write(file_bytes)
+                
+            # Upload to Cloud Storage asynchronously
+            from services.storage_service import get_storage_service
+            storage = get_storage_service()
+            if storage.is_configured:
+                # Use a fire-and-forget background task or await it? 
+                # Better to await to ensure consistency, but it slows down. We'll await it safely.
+                # Actually, storage.upload_file is synchronous because boto3 is blocking, so we'll wrap it.
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    self.executor,
+                    storage.upload_file_from_disk,
+                    str(photo_path),
+                    f"{self.room_id}/{filename}"
+                )
+                
             return await self._process_image_file(photo_path)
         except Exception as e:
              return {'filename': filename, 'success': False, 'error': str(e)}
@@ -151,18 +169,19 @@ class AdminService:
             
             processed_faces = 0
             # 4. Process each face
-            for i, (bbox, confidence) in enumerate(faces):
+            for i, (bbox, confidence, landmarks, embedding) in enumerate(faces):
                 print(f"[UPLOAD] Step 4/5: Processing face {i+1}/{len(faces)} (confidence: {confidence:.2f})...")
                 
                 face_img = crop_face(image, bbox)
-                preprocessed = preprocess_face(face_img, config.FACE_SIZE)
                 
-                # 5. Generate Embedding
-                print(f"[UPLOAD] Step 5/5: Generating embedding for face {i+1}... (this takes ~10-15s)")
-                embedding = self.face_recognizer.generate_embedding(preprocessed)
+                # Calculate quality score
+                quality_score = self.quality_scorer.score(face_img, landmarks)
+                if quality_score < getattr(config, 'FACE_QUALITY_THRESHOLD', 0.4):
+                    print(f"[UPLOAD] ⚠ Skipping face {i+1} due to low quality ({quality_score:.2f})")
+                    continue
                 
                 if embedding is not None:
-                    print(f"[UPLOAD] ✓ Embedding generated (dim: {len(embedding)})")
+                    print(f"[UPLOAD] ✓ Embedding available (dim: {len(embedding)}, quality: {quality_score:.2f})")
                     
                     # 6. Store in Vector DB
                     print(f"[UPLOAD] Storing in database...")
@@ -174,13 +193,14 @@ class AdminService:
                             "filename": filename,
                             "face_index": i,
                             "timestamp": metadata.get('timestamp'),
-                            "location": metadata.get('location_name')
+                            "location": metadata.get('location_name'),
+                            "quality_score": quality_score
                         }
                     )
                     processed_faces += 1
                     print(f"[UPLOAD] ✓ Face {i+1} stored successfully")
                 else:
-                    print(f"[UPLOAD] ❌ Failed to generate embedding for face {i+1}")
+                    print(f"[UPLOAD] ❌ Failed to get embedding for face {i+1}")
 
             print(f"[UPLOAD] ========== ✓ Completed: {filename} ({processed_faces} faces) ==========\n")
             return {

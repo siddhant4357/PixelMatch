@@ -1,175 +1,94 @@
 """
-Face Recognition Module using Super-Ensemble (ArcFace + FaceNet512).
-Implements Test Time Augmentation (TTA) for SOTA accuracy.
-
-Architecture:
-1. Preprocess: Align face
-2. Branch A: ArcFace (ResNet100) -> 512-dim
-3. Branch B: FaceNet512 (Inception) -> 512-dim
-4. TTA: Run both branches on Flipped image
-5. Fusion: Average TTA, Concatenate Branches -> 1024-dim Super-Vector
+Face Recognition Module using InsightFace ArcFace.
+Replaces the heavy DeepFace TensorFlow ensemble with a fast ONNX CPU model.
 """
 
 import numpy as np
-from deepface import DeepFace
-from typing import Optional, List
+from typing import Optional, List, Any
 import config
 import cv2
 import logging
+from models.face_detection import get_insightface_app
 
 logger = logging.getLogger(__name__)
 
-class FaceNet:
+class InsightFaceRecognizer:
     """
-    Super-Ensemble Face Recognition.
-    Combines ArcFace and FaceNet512 with TTA.
+    Face Recognition using InsightFace.
     """
     
     def __init__(self):
-        """Initialize both models and pre-load them to memory."""
-        """Initialize both models and pre-load them to memory."""
-        # Configurable Ensemble
-        if config.ENABLE_ENSEMBLE:
-            self.models = ["ArcFace", "Facenet512"]
-            self.weights = [0.7, 0.3]
-        else:
-            self.models = ["Facenet512"]
-            self.weights = [1.0]
+        """Initialize model."""
+        self.app = get_insightface_app()
+        print("InsightFace Recognizer ready.")
 
-        self.input_size = (160, 160) 
-        self.input_size = (160, 160)
-        
-        self.loaded_models = {}
-        
-        print("Loading Super-Ensemble Models into Memory (This runs once)...")
-        for model_name in self.models:
-            print(f"Loading {model_name}...")
-            try:
-                self.loaded_models[model_name] = DeepFace.build_model(model_name)
-                print(f"Loaded {model_name} successfully.")
-            except Exception as e:
-                print(f"CRITICAL ERROR loading {model_name}: {e}")
-        
-        print(f"Feature Weighting: {self.weights}")
-        print("Models loaded. Ready for fast inference.")
-
-    def _apply_clahe(self, img: np.ndarray) -> np.ndarray:
+    def generate_embedding(self, face_image: np.ndarray, enable_tta: bool = False) -> Optional[np.ndarray]:
         """
-        Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-        to normalize illumination (Wedding photos, bright/dark scenes).
+        Generate 512-dimensional embedding using InsightFace.
+        Note: InsightFace usually expects the whole image and a detected face object.
+        If we are passing a crop, it might be tricky. The best way is to pass the whole image
+        to `app.get()`, which does detection + recognition. 
+        But since our pipeline separates them (detect -> crop -> embed), we can use the model directly, 
+        or better yet, change the pipeline to just pass the face object returned by detection.
+        Let's support passing the whole image or a pre-detected face.
+        Actually, `admin_service.py` currently crops the face and passes it here. 
+        We should change `admin_service.py` to NOT crop, but we'll implement this function to handle both for now,
+        or just expect the full image and bounding box.
         """
+        # If passed a small crop, we can just run app.get() on it. It will detect the face in the crop and embed it.
         try:
-            # Convert to LAB color space
-            lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-            l, a, b = cv2.split(lab)
-            
-            # Apply CLAHE to L-channel
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            cl = clahe.apply(l)
-            
-            # Merge and convert back to RGB
-            limg = cv2.merge((cl,a,b))
-            return cv2.cvtColor(limg, cv2.COLOR_LAB2RGB)
-        except Exception as e:
-            print(f"CLAHE Warning: {e}")
-            return img
-
-    def generate_embedding(self, face_image: np.ndarray, enable_tta: bool = True) -> Optional[np.ndarray]:
-        """
-        Generate 1024-dimensional Super-Vector.
-        
-        Args:
-            face_image: Input face crop
-            enable_tta: Enable Test Time Augmentation (Flip) - Disable for faster uploads
-        """
-        if face_image is None:
-            return None
-        
-        try:
-            # Prepare image
+            # Prepare image (InsightFace expects BGR)
             if face_image.max() <= 1.0:
                 img_uint8 = (((face_image + 1) / 2) * 255).astype(np.uint8)
             else:
                 img_uint8 = face_image.astype(np.uint8)
             
             if len(img_uint8.shape) == 2:
-                img_uint8 = cv2.cvtColor(img_uint8, cv2.COLOR_GRAY2RGB)
+                bgr_image = cv2.cvtColor(img_uint8, cv2.COLOR_GRAY2BGR)
             elif img_uint8.shape[2] == 4:
-                img_uint8 = cv2.cvtColor(img_uint8, cv2.COLOR_RGBA2RGB)
-            
-            # --- Illumination Normalization (CLAHE) ---
-            img_uint8 = self._apply_clahe(img_uint8)
-            
-            # --- Test Time Augmentation (TTA) ---
-            images = [img_uint8]
-            if enable_tta:
-                img_flipped = cv2.flip(img_uint8, 1)
-                images.append(img_flipped)
-            
-            super_vector_parts = []
-            
-            # --- Run Ensemble ---
-            for i, model_name in enumerate(self.models):
-                embeddings = []
-                loaded_model = self.loaded_models.get(model_name)
+                bgr_image = cv2.cvtColor(img_uint8, cv2.COLOR_RGBA2BGR)
+            else:
+                bgr_image = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR)
                 
-                if not loaded_model:
-                     print(f"Model {model_name} not loaded! Skipping.")
-                     return None
-
-                for img in images:
-                    try:
-                        embedding_obj = DeepFace.represent(
-                            img_path=img,
-                            model_name=model_name,
-                            enforce_detection=False,
-                            detector_backend='skip',
-                            align=False
-                        )
-                        
-                        if isinstance(embedding_obj, list) and len(embedding_obj) > 0:
-                            emb = np.array(embedding_obj[0]['embedding'])
-                            embeddings.append(emb)
-                    except Exception as e:
-                        print(f"Model {model_name} inference failed: {e}")
-                        
-                if embeddings:
-                    # Average TTA results
-                    avg_emb = np.mean(embeddings, axis=0)
-                    
-                    # Normalize first
-                    norm = np.linalg.norm(avg_emb)
-                    if norm > 0:
-                        avg_emb = avg_emb / norm
-                        
-                    # Apply Feature Weighting
-                    # Weighted Concatenation: Multiply by weight before concat
-                    weight = self.weights[i]
-                    weighted_emb = avg_emb * weight
-                    
-                    super_vector_parts.append(weighted_emb)
-                else:
-                    print(f"Failed to generate embedding for {model_name}")
-                    return None
+            faces = self.app.get(bgr_image)
             
-            if len(super_vector_parts) != 2:
+            if not faces:
+                print("No face detected in crop during embedding generation.")
                 return None
-            
-            # --- Fusion ---
-            # Concatenate weighted vectors
-            super_vector = np.concatenate(super_vector_parts)
-            
-            # Final Normalization (essential for Cosine Similarity)
-            norm = np.linalg.norm(super_vector)
-            if norm > 0:
-                super_vector = super_vector / norm
                 
-            return super_vector.astype(np.float32)
+            # Get largest face in crop
+            faces.sort(key=lambda face: (face.bbox[2]-face.bbox[0])*(face.bbox[3]-face.bbox[1]), reverse=True)
+            main_face = faces[0]
+            
+            embedding = main_face.embedding
+            
+            # Normalize for cosine similarity
+            norm = np.linalg.norm(embedding)
+            if norm > 0:
+                embedding = embedding / norm
+                
+            return embedding.astype(np.float32)
             
         except Exception as e:
-            print(f"Error generating super-embedding: {e}")
+            print(f"Error generating embedding: {e}")
             return None
-    
+            
+    def generate_embedding_from_face(self, bgr_image: np.ndarray, face_obj: Any) -> Optional[np.ndarray]:
+        """
+        Generate embedding directly from an InsightFace face object without re-detecting.
+        (Optimal method if using InsightFace for both).
+        The face_obj from app.get() already has .embedding populated!
+        """
+        if face_obj is None or not hasattr(face_obj, 'embedding'):
+            return None
+            
+        embedding = face_obj.embedding
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+            
+        return embedding.astype(np.float32)
+
     def generate_embeddings_batch(self, face_images: list) -> list:
         """Batch generation."""
         if not face_images:
@@ -189,8 +108,8 @@ class FaceNet:
 # Global instance
 _facenet_instance = None
 
-def get_facenet_model() -> FaceNet:
+def get_facenet_model() -> InsightFaceRecognizer:
     global _facenet_instance
     if _facenet_instance is None:
-        _facenet_instance = FaceNet()
+        _facenet_instance = InsightFaceRecognizer()
     return _facenet_instance

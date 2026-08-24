@@ -53,3 +53,5 @@ backend/*.db
 
 # Ignore local config
 backend/config_local.py
+
+pixelmatch-upgrade-plan.md

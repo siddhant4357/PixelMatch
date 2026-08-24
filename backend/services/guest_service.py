@@ -13,9 +13,9 @@ from models.vector_db import get_vector_db
 from utils.image_processing import (
     load_image_from_bytes,
     crop_face,
-    preprocess_face,
     save_image
 )
+import numpy as np
 import config
 
 
@@ -40,6 +40,40 @@ class GuestService:
             self.selfie_dir.mkdir(exist_ok=True)
         else:
             self.selfie_dir = config.SELFIE_DIR
+
+    async def search_photos_by_embedding(
+        self,
+        embedding: np.ndarray,
+        top_k: int = None,
+        similarity_threshold: float = None
+    ) -> Dict:
+        """Search photos using a pre-computed embedding from the database."""
+        if top_k is None:
+            top_k = getattr(config, 'MAX_RESULTS', 100)
+            
+        print(f"[GUEST] Searching DB with stored embedding in room {self.room_id}")
+        
+        matches = self.vector_db.search_similar_faces(
+            query_embedding=embedding,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold
+        )
+        
+        results = []
+        for match in matches:
+            results.append({
+                "photo_name": match.get("filename"),
+                "similarity": match.get("similarity"),
+                "face_index": match.get("face_index"),
+                "bbox": match.get("bbox")
+            })
+            
+        return {
+            "success": True,
+            "total_matches": len(results),
+            "matches": results,
+            "room_id": self.room_id
+        }
     
     async def search_photos_by_selfie(
         self,

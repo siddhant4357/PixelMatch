@@ -42,14 +42,15 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "face_embeddings")
 FACE_SIZE = 160  # Standard face image size for preprocessing
 MIN_FACE_CONFIDENCE = float(os.getenv("MIN_FACE_CONFIDENCE", 0.5))
 # Super-Ensemble Settings
-# Super-Ensemble Settings
-ENABLE_ENSEMBLE = os.getenv("ENABLE_ENSEMBLE", "false").lower() == "true"
-if ENABLE_ENSEMBLE:
-    EMBEDDING_DIM = 1024  # ArcFace (512) + FaceNet512 (512)
-else:
-    EMBEDDING_DIM = 512  # FaceNet512 only
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.55))  # Read from .env
+EMBEDDING_DIM = 512  # InsightFace ArcFace
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.45))  # ArcFace threshold
 MAX_FACES_PER_IMAGE = 50  # Maximum number of faces to detect per image
+
+# InsightFace Settings
+MIN_FACE_SIZE_PX = int(os.getenv("MIN_FACE_SIZE_PX", 40))
+FACE_QUALITY_THRESHOLD = float(os.getenv("FACE_QUALITY_THRESHOLD", 0.4))
+FAISS_TOP_K_CANDIDATES = int(os.getenv("FAISS_TOP_K_CANDIDATES", 50))
+INSIGHTFACE_MODEL = os.getenv("INSIGHTFACE_MODEL", "buffalo_s")
 
 # Privacy & Security
 ENABLE_PRIVACY_MODE = os.getenv("ENABLE_PRIVACY_MODE", "true").lower() == "true"

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: pixelmatch-api
+    env: python
+    region: ohio
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      # All other env vars (R2_ENDPOINT_URL, DATABASE_URL, etc) should be set in the Render Dashboard

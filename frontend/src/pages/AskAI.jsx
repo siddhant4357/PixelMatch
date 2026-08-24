@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Send, Loader2, AlertCircle, Sparkles, MapPin, Calendar, Download, PackageOpen, Smartphone, Clock } from 'lucide-react'
-import { uploadSelfieForAI, queryAI, getPhotoUrl } from '../services/api'
+import { Upload, Send, Loader2, AlertCircle, Sparkles, MapPin, Calendar, Download, PackageOpen, Smartphone, Clock, ArrowLeft } from 'lucide-react'
+import { queryAI, getPhotoUrl, setRoomId } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
+import { useParams } from 'react-router-dom'
 
 const SUGGESTION_CHIPS = [
     { icon: '📍', label: 'Photos from Jaisalmer', query: 'Show my photos from Jaisalmer' },
@@ -16,13 +17,14 @@ const SUGGESTION_CHIPS = [
 
 const AskAI = () => {
     const navigate = useNavigate()
+    const { roomCode } = useParams()
 
     // State
-    const [selfieFile, setSelfieFile] = useState(null)
-    const [selfiePreview, setSelfiePreview] = useState(null)
-    const [sessionId, setSessionId] = useState(null)
-    const [uploading, setUploading] = useState(false)
-    const [messages, setMessages] = useState([])
+    const [messages, setMessages] = useState([{
+        type: 'ai',
+        text: `✅ Connected to room ${roomCode}! Ask me anything — try "Show my Jaisalmer photos", "Show January photos", or "Photos from my iPhone".`,
+        timestamp: new Date().toISOString()
+    }])
     const [inputMessage, setInputMessage] = useState('')
     const [sending, setSending] = useState(false)
     const [error, setError] = useState(null)
@@ -36,48 +38,18 @@ const AskAI = () => {
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
-
-    // Handle selfie selection
-    const handleFileSelect = (e) => {
-        const file = e.target.files[0]
-        if (file) {
-            setSelfieFile(file)
-            const reader = new FileReader()
-            reader.onload = (e) => setSelfiePreview(e.target.result)
-            reader.readAsDataURL(file)
+    
+    // Ensure room context is set for api requests
+    useEffect(() => {
+        if (roomCode) {
+            setRoomId(roomCode)
         }
-    }
-
-    // Upload selfie and create session
-    const handleUploadSelfie = async () => {
-        if (!selfieFile) return
-
-        setUploading(true)
-        setError(null)
-
-        try {
-            const data = await uploadSelfieForAI(selfieFile)
-            setSessionId(data.session_id)
-
-            setMessages([{
-                type: 'ai',
-                text: "✅ Got your selfie! Now ask me anything — try \"Show my Jaisalmer photos\", \"Show January photos\", or \"Photos from my iPhone\".",
-                timestamp: new Date().toISOString()
-            }])
-
-            setTimeout(() => inputRef.current?.focus(), 100)
-
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setUploading(false)
-        }
-    }
+    }, [roomCode])
 
     // Send message to AI
     const handleSendMessage = async (overrideText = null) => {
         const userMessage = (overrideText || inputMessage).trim()
-        if (!userMessage || !sessionId || sending) return
+        if (!userMessage || sending) return
 
         setInputMessage('')
         setSending(true)
@@ -91,7 +63,7 @@ const AskAI = () => {
         }])
 
         try {
-            const data = await queryAI(sessionId, userMessage)
+            const data = await queryAI(userMessage)
 
             // Add AI response to chat
             setMessages(prev => [...prev, {
@@ -120,7 +92,7 @@ const AskAI = () => {
     }
 
     const handleChipClick = (query) => {
-        if (!sessionId || sending) return
+        if (sending) return
         handleSendMessage(query)
     }
 
@@ -184,89 +156,27 @@ const AskAI = () => {
 
     return (
         <div className="min-h-screen">
-            {/* Premium Loading Overlay */}
-            {uploading && (
-                <LoadingSpinner
-                    message="Processing Your Selfie"
-                    tips={aiTips}
-                    fullScreen={true}
-                />
-            )}
-
             <div className="container mx-auto px-6 py-12 max-w-7xl">
                 {/* Header */}
-                <div className="text-center mb-12">
-                    <div className="inline-flex items-center gap-2 mb-4">
-                        <Sparkles className="w-8 h-8 text-purple-500" />
-                        <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">Ask AI</h1>
+                <div className="flex items-center gap-4 mb-12">
+                    <button 
+                        onClick={() => navigate(`/room/${roomCode}`)}
+                        className="p-3 bg-white/60 hover:bg-white backdrop-blur-md rounded-2xl border border-purple-200 transition-all text-purple-700 shadow-sm hover:shadow-md group"
+                    >
+                        <ArrowLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
+                    </button>
+                    <div>
+                        <div className="inline-flex items-center gap-2">
+                            <Sparkles className="w-8 h-8 text-purple-500" />
+                            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">Ask AI</h1>
+                        </div>
+                        <p className="text-lg text-slate-600">Find your photos in this event using natural language</p>
                     </div>
-                    <p className="text-xl text-slate-600">Find your photos using natural language</p>
                 </div>
 
-                {/* Step 1: Upload Selfie */}
-                {!sessionId && (
-                    <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl p-8 mb-8 shadow-lg">
-                        <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Step 1: Upload Your Selfie</h2>
-
-                        <div className="mb-6">
-                            <input
-                                type="file"
-                                id="selfieInput"
-                                accept="image/*"
-                                onChange={handleFileSelect}
-                                className="hidden"
-                            />
-
-                            <label
-                                htmlFor="selfieInput"
-                                className="block border-2 border-dashed border-purple-200 hover:border-purple-300 bg-purple-50/30 rounded-xl p-12 text-center cursor-pointer transition-all"
-                            >
-                                <Upload className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-                                <div className="text-xl font-semibold text-slate-800 mb-2">
-                                    Click to select your selfie
-                                </div>
-                                <div className="text-slate-600">
-                                    Make sure your face is clearly visible
-                                </div>
-                            </label>
-                        </div>
-
-                        {/* Preview */}
-                        {selfiePreview && (
-                            <div className="mb-6 text-center">
-                                <img
-                                    src={selfiePreview}
-                                    alt="Selfie preview"
-                                    className="max-w-xs mx-auto rounded-xl border-2 border-purple-200 shadow-lg"
-                                />
-                                <div className="text-slate-600 mt-3 font-medium">{selfieFile?.name}</div>
-                            </div>
-                        )}
-
-                        <button
-                            onClick={handleUploadSelfie}
-                            disabled={!selfieFile || uploading}
-                            className="w-full px-6 py-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2 shadow-lg"
-                        >
-                            {uploading ? (
-                                <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    <span>Processing...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-5 h-5" />
-                                    <span>Start AI Search</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
-                )}
-
-                {/* Step 2: Chat with AI */}
-                {sessionId && (
-                    <div className="grid lg:grid-cols-2 gap-8">
-                        {/* Chat Section */}
+                {/* Chat with AI */}
+                <div className="grid lg:grid-cols-2 gap-8">
+                    {/* Chat Section */}
                         <div className="bg-white/60 backdrop-blur-md border border-purple-200/50 rounded-2xl overflow-hidden flex flex-col shadow-lg" style={{ height: '640px' }}>
                             <div className="p-6 border-b border-purple-200">
                                 <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center gap-2">
@@ -462,7 +372,6 @@ const AskAI = () => {
                             </div>
                         </div>
                     </div>
-                )}
 
                 {/* Error Message */}
                 {error && (

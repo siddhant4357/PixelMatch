@@ -1,122 +1,116 @@
-
-"""
-Room Service Layer.
-Handles creating and validating event rooms.
-"""
-
-import json
-import random
 import string
-import shutil
+import random
 from pathlib import Path
 from typing import Dict, Optional, List
-import config
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 import hashlib
+import os
 
 ROOMS_DIR = Path("data/rooms")
 
 class RoomService:
-    """Service for managing Event Rooms."""
+    """Service for managing Event Rooms via Postgres."""
     
     def __init__(self):
         ROOMS_DIR.mkdir(parents=True, exist_ok=True)
     
-    def _generate_room_id(self, length: int = 6) -> str:
-        """Generate a random alphanumeric room ID (e.g., A7X92B)."""
+    def get_room_path(self, room_code: str) -> Path:
+        return ROOMS_DIR / room_code.upper()
+
+    def _generate_room_code(self, length: int = 6) -> str:
         chars = string.ascii_uppercase + string.digits
-        # Ensure at least one letter and one number
         while True:
             code = ''.join(random.choices(chars, k=length))
             if any(c.isdigit() for c in code) and any(c.isalpha() for c in code):
                 return code
 
-    def create_room(self, event_name: str, password: str = None) -> Dict:
-        """
-        Create a new event room.
+    async def create_room(self, event_name: str, user_id: str, db: AsyncSession) -> Dict:
+        """Create room in DB and add creator as admin."""
+        # Fast path generation (we can retry on conflict)
+        room_code = self._generate_room_code()
         
-        Returns:
-            Dict containing room_id and event_name
-        """
-        # Generate unique ID
-        while True:
-            room_id = self._generate_room_id()
-            room_path = ROOMS_DIR / room_id
-            if not room_path.exists():
-                break
+        query = text("""
+            INSERT INTO rooms (room_code, event_name, created_by)
+            VALUES (:room_code, :event_name, :created_by)
+            RETURNING id, room_code, event_name, photo_count, created_at
+        """)
         
-        # Create directory structure
-        room_path.mkdir()
-        (room_path / "uploads").mkdir()
-        (room_path / "chromadb").mkdir()
-        
-        # Hash password if provided
-        password_hash = None
-        if password:
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
-
-        # Save metadata
-        metadata = {
-            "room_id": room_id,
+        result = await db.execute(query, {
+            "room_code": room_code,
             "event_name": event_name,
-            "created_at_ts": config.get_current_timestamp() if hasattr(config, 'get_current_timestamp') else 0,
-            "password_hash": password_hash
-        }
+            "created_by": user_id
+        })
+        room = dict(result.fetchone()._mapping)
         
-        with open(room_path / "metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
-            
-        print(f"[ROOM] Created new room: {event_name} ({room_id})")
-        return metadata
-
-    def get_room(self, room_id: str) -> Optional[Dict]:
-        """Validate if a room exists and return its metadata."""
-        if not room_id:
-            return None
-            
-        room_path = ROOMS_DIR / room_id.upper() # Case insensitive ID
-        meta_path = room_path / "metadata.json"
+        # Add as admin
+        member_query = text("""
+            INSERT INTO room_members (user_id, room_id, role)
+            VALUES (:user_id, :room_id, 'admin')
+        """)
+        await db.execute(member_query, {
+            "user_id": user_id,
+            "room_id": room['id']
+        })
         
-        if not room_path.exists() or not meta_path.exists():
-            return None
-            
-        try:
-            with open(meta_path, "r") as f:
-                return json.load(f)
-        except Exception:
-            return None
+        await db.commit()
+        
+        # Create physical directories for local FAISS (if needed)
+        room_path = self.get_room_path(room_code)
+        room_path.mkdir(exist_ok=True)
+        (room_path / "uploads").mkdir(exist_ok=True)
+        
+        return room
 
-    def verify_password(self, room_id: str, password: str) -> bool:
-        """Verify room password."""
-        room = self.get_room(room_id)
+    async def get_room(self, room_code: str, db: AsyncSession) -> Optional[Dict]:
+        """Get room details by code."""
+        if not db:
+            return {"room_code": room_code, "event_name": "Test Room"}
+            
+        query = text("SELECT * FROM rooms WHERE room_code = :room_code")
+        result = await db.execute(query, {"room_code": room_code.upper()})
+        row = result.fetchone()
+        
+        if row:
+            return dict(row._mapping)
+        return None
+
+    async def join_room(self, room_code: str, user_id: str, db: AsyncSession) -> Optional[Dict]:
+        """Join a room as a guest."""
+        room = await self.get_room(room_code, db)
         if not room:
-            return False
+            raise ValueError("Room not found")
             
-        stored_hash = room.get("password_hash")
-        
-        # If no password set, return True (or False depending on policy, but usually rooms without passwords are open/unprotected or shouldn't exist in this new model. 
-        # For backward compatibility, if no password set, we might allow reset? 
-        # Let's say if password IS set, we verify. If NOT set, we allow (or maybe fail safe).
-        # Requirement says "password will be used". 
-        if not stored_hash:
-            return True # No password protected
-            
-        if not password:
-            return False # Password required but not provided
-            
-        input_hash = hashlib.sha256(password.encode()).hexdigest()
-        return input_hash == stored_hash
+        # Add to members (upsert in case they already joined)
+        member_query = text("""
+            INSERT INTO room_members (user_id, room_id, role)
+            VALUES (:user_id, :room_id, 'guest')
+            ON CONFLICT (user_id, room_id) DO NOTHING
+        """)
+        await db.execute(member_query, {
+            "user_id": user_id,
+            "room_id": room['id']
+        })
+        await db.commit()
+        return room
 
-    def get_room_path(self, room_id: str) -> Optional[Path]:
-        """Get the absolute path to a room's data directory."""
-        if not room_id: return None
-        return ROOMS_DIR / room_id.upper()
+    async def get_user_rooms(self, user_id: str, db: AsyncSession) -> List[Dict]:
+        """Get all rooms a user is part of (admin or guest)."""
+        if not db:
+            return []
+            
+        query = text("""
+            SELECT r.room_code, r.event_name, r.cover_emoji, r.photo_count, r.event_date, rm.role
+            FROM rooms r
+            JOIN room_members rm ON r.id = rm.room_id
+            WHERE rm.user_id = :user_id
+            ORDER BY rm.joined_at DESC
+        """)
+        result = await db.execute(query, {"user_id": user_id})
+        return [dict(row._mapping) for row in result.fetchall()]
 
-# Global instance
-_room_service = None
+# Global Instance
+_room_service_instance = RoomService()
 
 def get_room_service() -> RoomService:
-    global _room_service
-    if _room_service is None:
-        _room_service = RoomService()
-    return _room_service
+    return _room_service_instance
