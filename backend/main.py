@@ -11,6 +11,7 @@ import uvicorn
 import uuid
 import numpy as np
 import base64
+import logging
 from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown (if needed)
 
+_startup_logger = logging.getLogger("startup")
+
 # Create FastAPI app
 app = FastAPI(
     title="PixelMatch API",
@@ -45,9 +48,9 @@ app = FastAPI(
 
 # Add CORS middleware
 # Note: allow_credentials=True is incompatible with allow_origins=["*"].
-# We use the explicit list from ALLOWED_ORIGINS, which always includes localhost.
-# On production, set ALLOWED_ORIGINS env var to the Vercel domain.
+# We use the explicit list from ALLOWED_ORIGINS env var.
 _origins = config.ALLOWED_ORIGINS
+_startup_logger.warning(f"CORS ALLOWED_ORIGINS = {_origins}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
