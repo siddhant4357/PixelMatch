@@ -27,7 +27,7 @@ python-dateutil==2.9.0
 # Database & Auth (Phase 2)
 asyncpg==0.29.0
 sqlalchemy[asyncio]==2.0.23
-pyjwt==2.8.0
+pyjwt[crypto]==2.8.0
 
 # Testing
 pytest==7.4.4
