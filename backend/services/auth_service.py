@@ -1,5 +1,6 @@
 import os
 import jwt
+from jwt.algorithms import RSAAlgorithm
 import httpx
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Dict, Any
 from db.database import get_db
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,12 +103,14 @@ class ClerkAuthService:
                             }
                 
             if rsa_key:
+                # PyJWT v2.x: Use RSAAlgorithm.from_jwk() with a JSON string
+                public_key = RSAAlgorithm.from_jwk(json.dumps(rsa_key))
                 payload = jwt.decode(
                     token,
-                    jwt.algorithms.RSAAlgorithm.from_jwk(rsa_key),
+                    public_key,
                     algorithms=["RS256"],
-                    options={"verify_aud": False}, # Clerk uses frontend origin as aud sometimes
-                    leeway=60 # Handle clock skew
+                    options={"verify_aud": False},
+                    leeway=60
                 )
                 return payload
             else:
