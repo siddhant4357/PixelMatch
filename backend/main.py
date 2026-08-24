@@ -44,9 +44,13 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Note: allow_credentials=True is incompatible with allow_origins=["*"].
+# We use the explicit list from ALLOWED_ORIGINS, which always includes localhost.
+# On production, set ALLOWED_ORIGINS env var to the Vercel domain.
+_origins = config.ALLOWED_ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS,
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
