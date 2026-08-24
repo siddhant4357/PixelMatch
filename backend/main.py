@@ -31,8 +31,22 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup — preload the face model before any requests arrive.
+    # This avoids an OOM crash where model loading + request image processing
+    # both compete for memory at the same time.
+    import asyncio
     await init_db()
+    
+    # Preload InsightFace on a thread so it doesn't block the event loop
+    loop = asyncio.get_event_loop()
+    try:
+        print("Preloading InsightFace model at startup...")
+        from models.face_detection import get_insightface_app
+        await loop.run_in_executor(None, get_insightface_app)
+        print("InsightFace model preloaded successfully.")
+    except Exception as e:
+        print(f"WARNING: Could not preload InsightFace model: {e}")
+    
     yield
     # Shutdown (if needed)
 
@@ -99,6 +113,14 @@ async def upload_selfie(
     
     file_bytes = await selfie.read()
     image = load_image_from_bytes(file_bytes)
+    del file_bytes  # free raw bytes immediately
+    gc.collect()
+    
+    # Resize to max 640px to reduce peak memory during face detection
+    h, w = image.shape[:2]
+    if max(h, w) > 640:
+        scale = 640 / max(h, w)
+        image = cv2.resize(image, (int(w * scale), int(h * scale)))
     
     detector = FaceDetector()
     faces = detector.detect_faces(image)
