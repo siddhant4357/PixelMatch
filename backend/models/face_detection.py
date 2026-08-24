@@ -17,14 +17,13 @@ def get_insightface_app() -> FaceAnalysis:
     global _insightface_app
     if _insightface_app is None:
         print(f"Loading InsightFace model: {config.INSIGHTFACE_MODEL}...")
-        # Use CPUExecutionProvider for free-tier compatibility
         _insightface_app = FaceAnalysis(
-            name=config.INSIGHTFACE_MODEL, 
+            name=config.INSIGHTFACE_MODEL,
             providers=['CPUExecutionProvider']
         )
-        # ctx_id=0 means CPU in ONNX runtime context for insightface sometimes, or -1. 
-        # Actually -1 is CPU, but with providers=['CPUExecutionProvider'] it's safe.
-        _insightface_app.prepare(ctx_id=-1, det_size=(640, 640))
+        # Use 320x320 instead of 640x640 — saves ~250MB RAM on free-tier servers.
+        # Accuracy is slightly reduced but still excellent for single-person selfies.
+        _insightface_app.prepare(ctx_id=-1, det_size=(320, 320))
         print("InsightFace model loaded successfully.")
     return _insightface_app
 

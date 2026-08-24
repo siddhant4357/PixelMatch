@@ -92,33 +92,39 @@ async def upload_selfie(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    from models.face_detection import detect_single_face_in_image
+    import gc
+    from models.face_detection import FaceDetector
     from utils.image_processing import load_image_from_bytes, crop_face
+    import cv2
     
     file_bytes = await selfie.read()
     image = load_image_from_bytes(file_bytes)
     
-    # Actually wait, our new detect_faces_in_image doesn't return embedding in the old signature.
-    # Let's use the detector directly.
-    from models.face_detection import FaceDetector
     detector = FaceDetector()
     faces = detector.detect_faces(image)
     
     if not faces:
+        del image, file_bytes, faces
+        gc.collect()
         raise HTTPException(status_code=400, detail="No face detected in the image")
         
-    face = faces[0] # Largest face
+    face = faces[0]  # Largest face
     bbox, confidence, landmarks, embedding = face
     
     if embedding is None:
+        del image, file_bytes, faces
+        gc.collect()
         raise HTTPException(status_code=400, detail="Failed to extract face embedding")
         
     # Create thumbnail
-    import cv2
     face_img = crop_face(image, bbox)
     thumb = cv2.resize(face_img, (100, 100))
     _, buffer = cv2.imencode('.jpg', cv2.cvtColor(thumb, cv2.COLOR_RGB2BGR))
     thumb_b64 = base64.b64encode(buffer).decode('utf-8')
+    
+    # Free large objects immediately to avoid OOM on free tier
+    del image, file_bytes, faces, face_img, thumb, buffer
+    gc.collect()
     
     await user_service.save_embedding(user['id'], embedding, thumb_b64, db)
     return {"success": True, "message": "Selfie saved successfully"}
