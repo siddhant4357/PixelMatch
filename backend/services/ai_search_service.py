@@ -111,21 +111,25 @@ class AISearchService:
         current_year = datetime.now().year
         system_prompt = f"""You are a photo search assistant embedded in PixelMatch. Parse the user's message.
 
-STEP 1: Auto-correct any typos in the message before analyzing. E.g. "jasalmer" → "Jaisalmer", "januray" → "January", "hie" → "hi".
+STEP 1: Auto-correct any typos in the message before analyzing. E.g. "jasalmer" → "Jaisalmer", "januray" → "January".
 
 STEP 2: Classify the intent:
 - "chat" = greetings, thanks, help requests, questions about the app, or anything NOT asking to search for specific photos. Examples: "hi", "hello", "thanks", "what can you do?", "how does this work?", "help"
-- "search" = any request to find, show, display, or get photos. Examples: "show me photos from Jaisalmer", "find my January photos", "photos from my iPhone", "show all"
+- "search" = any request to find, show, display, or get photos. Examples: "show me photos from Jaisalmer", "find my January photos", "photos from my iPhone", "show all", "all pics of 2026"
 
-STEP 3: If intent is "search", extract filters from the (typo-corrected) query:
+STEP 3: If intent is "search", extract filters:
 - location: city/place name mentioned (e.g. "Jaisalmer", "Paris") — raw place name, NOT matched to list
-- date_start / date_end: ISO date range ONLY if user explicitly mentions a full date or specifies a year. Leave null if user only mentions a month name without a year.
-- year_specified: true ONLY if the user explicitly stated a year (e.g. "January 2024", "2025"). false if only a month name like "January" is mentioned.
+- date_start / date_end: ISO date range.
+  - If user mentions a FULL YEAR only (e.g. "2026", "pics of 2025"), set date_start="YYYY-01-01" and date_end="YYYY-12-31".
+  - If user mentions a YEAR RANGE (e.g. "2025 to 2026", "from 2024 to 2026"), set date_start="YYYY-01-01" and date_end="YYYY-12-31" covering the full range.
+  - If user mentions MONTH + YEAR (e.g. "January 2025"), set exact month range.
+  - Leave null ONLY if user gives NO time reference at all.
+- year_specified: true if user mentioned any year explicitly.
 - month_only: true if user mentioned ONLY a month name with no year. In this case set month_number (1-12) and leave date_start/date_end null.
 - month_number: integer 1-12 if month_only is true, else null.
-- device_make: camera brand if mentioned (e.g. "Apple", "Samsung", "OnePlus", "Xiaomi"). Normalize to brand name.
-- device_model: specific model if mentioned (e.g. "iPhone 14", "Galaxy S22")
-- show_all: true ONLY if user explicitly says "all photos", "everything", "all my photos"
+- device_make: camera brand if mentioned (e.g. "Apple", "Samsung", "OnePlus"). Normalize to brand name.
+- device_model: specific model if mentioned.
+- show_all: true ONLY if user explicitly says "all photos", "everything", "all my photos", "all pics" WITH NO date/location filter. If user says "all pics of 2026" that is NOT show_all — it is a year filter.
 - keywords: other activity/event keywords (beach, party, wedding, etc.)
 
 Available known photo locations for context: {', '.join([loc for loc in available_locations if loc]) if available_locations else 'None'}
@@ -171,19 +175,16 @@ Respond ONLY with valid JSON, no other text:
             
             logger.info(f"AI parsed query: {parsed}")
 
-            # Determine month_only mode:
-            # If the AI set month_only=True (no year specified), we use month_number filtering.
-            # If the AI set date_start/date_end with year_specified=False, override to month_only mode
-            # to avoid wrong-year filtering.
+            # Determine filtering mode:
             month_only = parsed.get('month_only', False)
             month_number = parsed.get('month_number')
             year_specified = parsed.get('year_specified', False)
+            date_start = parsed.get('date_start')
+            date_end = parsed.get('date_end')
 
             # If AI gave a date range but year was NOT explicitly specified,
             # convert to month_only mode so we don't filter on the wrong year.
-            date_start = parsed.get('date_start')
-            date_end = parsed.get('date_end')
-            if date_start and not year_specified:
+            if date_start and not year_specified and not month_only:
                 try:
                     month_number = int(date_start[5:7])
                     month_only = True
@@ -281,10 +282,13 @@ Respond ONLY with valid JSON, no other text:
                 device_make = brand
                 break
         
-        # Simple date parsing
+        # Simple date parsing — handle year-only and year-range queries too
         date_start, date_end = None, None
+        month_only_flag = False
+        month_number_val = None
         current_year = datetime.now().year
-        
+
+        import re as _re
         months = {
             'january': 1, 'jan': 1,
             'february': 2, 'feb': 2,
@@ -299,39 +303,46 @@ Respond ONLY with valid JSON, no other text:
             'november': 11, 'nov': 11,
             'december': 12, 'dec': 12
         }
-        
+
+        # Detect year-range: "2025 to 2026", "from 2024 to 2026"
+        year_range_match = _re.search(r'(20\d{2})\s*(?:to|-|through|until)\s*(20\d{2})', query_lower)
+        # Detect single year: "2026", "pics of 2025"
+        single_year_match = _re.search(r'\b(20\d{2})\b', user_query) if not year_range_match else None
+
+        # Check for month name first
+        found_month = False
         for month_name, month_num in months.items():
             if month_name in query_lower:
-                import re
-                year_match = re.search(r'20\d{2}', user_query)
+                year_match = _re.search(r'20\d{2}', user_query)
                 if year_match:
-                    # Year explicitly given — use exact range
                     year = int(year_match.group())
+                    from calendar import monthrange
+                    last_day = monthrange(year, month_num)[1]
                     date_start = f"{year}-{month_num:02d}-01"
-                    if month_num == 12:
-                        date_end = f"{year}-12-31"
-                    else:
-                        from calendar import monthrange
-                        last_day = monthrange(year, month_num)[1]
-                        date_end = f"{year}-{month_num:02d}-{last_day}"
+                    date_end = f"{year}-{month_num:02d}-{last_day}"
                     month_only_flag = False
                     month_number_val = None
-                    logger.info(f"[SIMPLE PARSER] Year specified: {month_name} {year} -> {date_start} to {date_end}")
+                    logger.info(f"[SIMPLE PARSER] Month+year: {month_name} {year} -> {date_start} to {date_end}")
                 else:
-                    # No year — use month_only mode to match across all years
-                    date_start = None
-                    date_end = None
                     month_only_flag = True
                     month_number_val = month_num
-                    logger.info(f"[SIMPLE PARSER] Month only (no year): {month_name} -> month_number={month_num}")
+                    logger.info(f"[SIMPLE PARSER] Month only: {month_name} -> month_number={month_num}")
+                found_month = True
                 break
-        
-        # Initialise month_only tracking (set inside the month loop above)
-        try:
-            month_only_flag
-        except NameError:
-            month_only_flag = False
-            month_number_val = None
+
+        if not found_month:
+            if year_range_match:
+                year_start = int(year_range_match.group(1))
+                year_end = int(year_range_match.group(2))
+                date_start = f"{year_start}-01-01"
+                date_end = f"{year_end}-12-31"
+                logger.info(f"[SIMPLE PARSER] Year range: {year_start}-{year_end}")
+            elif single_year_match:
+                year = int(single_year_match.group(1))
+                date_start = f"{year}-01-01"
+                date_end = f"{year}-12-31"
+                logger.info(f"[SIMPLE PARSER] Year only: {year}")
+
 
         keywords = []
         keyword_patterns = ['beach', 'party', 'wedding', 'birthday', 'vacation', 'trip', 'concert', 'festival']
@@ -353,9 +364,6 @@ Respond ONLY with valid JSON, no other text:
             'show_all': show_all,
             'confidence': 0.5
         }
-        
-        logger.info(f"[SIMPLE PARSER] Result: {result}")
-        return result
     
     def generate_ai_response(
         self,
@@ -427,13 +435,22 @@ Examples:
         count = len(search_results)
         
         if count == 0:
-            return "No photos found for that search. Try a different location or date! 📸"
+            return "No photos found for that search. Try asking with a different date, location, or just say 'show all'! 📸"
         
         location = search_criteria.get('location')
         device = search_criteria.get('device_make')
         date_range = search_criteria.get('date_range', (None, None))
-        
+        show_all = search_criteria.get('show_all', False)
+
+        if show_all:
+            return f"Here are all {count} of your photo{'s' if count != 1 else ''}! 🎉"
         if location and date_range[0]:
+            # Check if it's a full year range
+            if date_range[0].endswith('-01-01') and (date_range[1] or '').endswith('-12-31'):
+                year_s = date_range[0][:4]
+                year_e = (date_range[1] or '')[:4]
+                label = year_s if year_s == year_e else f"{year_s}–{year_e}"
+                return f"Found {count} photo{'s' if count != 1 else ''} from {location} in {label}! 📍"
             month = date_range[0][5:7]
             month_name = datetime(1900, int(month), 1).strftime('%B')
             return f"Found {count} photo{'s' if count != 1 else ''} from {location} in {month_name}! 📸"
@@ -442,8 +459,16 @@ Examples:
         if device:
             return f"Found {count} photo{'s' if count != 1 else ''} from your {device}! 📱"
         if date_range[0]:
+            if date_range[0].endswith('-01-01') and (date_range[1] or '').endswith('-12-31'):
+                year_s = date_range[0][:4]
+                year_e = (date_range[1] or '')[:4]
+                label = year_s if year_s == year_e else f"{year_s}–{year_e}"
+                return f"Found {count} photo{'s' if count != 1 else ''} from {label}! 📅"
             month = date_range[0][5:7]
             month_name = datetime(1900, int(month), 1).strftime('%B')
+            return f"Found {count} photo{'s' if count != 1 else ''} from {month_name}! 📅"
+        if search_criteria.get('month_only') and search_criteria.get('month_number'):
+            month_name = datetime(1900, search_criteria['month_number'], 1).strftime('%B')
             return f"Found {count} photo{'s' if count != 1 else ''} from {month_name}! 📅"
         
         return f"Found {count} photo{'s' if count != 1 else ''}! 📸"
@@ -489,7 +514,25 @@ Examples:
             }
         
         # --- SEARCH INTENT: perform face + filter search ---
-        
+
+        # Step 0: show_all short-circuit — return all face matches with no filters
+        if criteria.get('show_all') and not criteria.get('location') and not criteria['date_range'][0] and not criteria.get('device_make'):
+            face_matches = self.vector_db.search_similar_faces(
+                query_embedding=face_embedding,
+                top_k=200,
+                similarity_threshold=0.50
+            )
+            logger.info(f"[AI SEARCH] show_all: returning all {len(face_matches)} face matches")
+            ai_message = self.generate_ai_response(user_query, face_matches, criteria)
+            return {
+                'success': True,
+                'intent': 'search',
+                'ai_message': ai_message,
+                'photos': face_matches[:100],
+                'count': len(face_matches),
+                'criteria': criteria
+            }
+
         # Step 1: Face match (baseline pool)
         face_matches = self.vector_db.search_similar_faces(
             query_embedding=face_embedding,
@@ -505,9 +548,10 @@ Examples:
             logger.info(f"[AI SEARCH] After location filter: {len(face_matches)} photos")
         
         # Step 3: Date filter
-        # Two modes:
-        #   month_only=True  → match photos by month number regardless of year (e.g. user said "January")
-        #   month_only=False → match photos against a specific date range (year was explicit)
+        # Three modes:
+        #   show_all=True           → no date filter at all (handled above)
+        #   month_only=True         → match photos by month number regardless of year
+        #   date_range is set       → explicit date range (year specified, or year-only range)
         if criteria.get('month_only') and criteria.get('month_number'):
             logger.info(f"[AI SEARCH] Month-only filter: month={criteria['month_number']}")
             face_matches = self._filter_by_month(face_matches, criteria['month_number'])
@@ -525,12 +569,6 @@ Examples:
         
         # Step 5: Generate AI response
         ai_message = self.generate_ai_response(user_query, face_matches, criteria)
-        
-        chat_history.append({
-            'user': user_query,
-            'ai': ai_message,
-            'timestamp': datetime.now().isoformat()
-        })
         
         return {
             'success': True,
