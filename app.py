@@ -2,8 +2,7 @@ import os
 import sys
 
 # ── Monkey-patch: HfFolder was removed in huggingface_hub >= 1.0 but
-# gradio 4.x oauth.py still tries to import it. Provide a no-op stub
-# so the import succeeds without affecting any real functionality.
+# gradio 4.x oauth.py still imports it. Inject a stub before gradio loads.
 import huggingface_hub as _hfh
 if not hasattr(_hfh, "HfFolder"):
     class _HfFolderStub:
@@ -18,7 +17,6 @@ if not hasattr(_hfh, "HfFolder"):
             pass
     _hfh.HfFolder = _HfFolderStub
 
-# Now it is safe to import gradio
 import gradio as gr
 
 # Add the backend directory to the Python path
@@ -30,15 +28,20 @@ os.chdir(backend_path)
 
 from main import app as fastapi_app
 
-# Minimal status page — required so the HF Spaces watchdog finds a Gradio demo
+# Minimal Gradio status page
 with gr.Blocks(title="PixelMatch API") as demo:
     gr.Markdown("# PixelMatch API 🚀")
-    gr.Markdown("The backend is running. API docs are available at `/docs`.")
+    gr.Markdown("The backend API is running. Access the API docs at `/api/docs`.")
 
-# Mount the Gradio status page at /ui; FastAPI handles all other routes
-app = gr.mount_gradio_app(fastapi_app, demo, path="/ui")
+# ── Key fix: mount our entire FastAPI app into gradio's internal FastAPI
+# at the /api prefix.  demo.app is the FastAPI instance that gradio's own
+# uvicorn server will serve — mounting here means all our routes are live
+# without needing a separate uvicorn process.
+demo.app.mount("/api", fastapi_app)
 
-if __name__ == "__main__":
-    import uvicorn
-    # Hugging Face Spaces routes external traffic to port 7860
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+# ── CRITICAL: use demo.launch(), NOT uvicorn.run().
+# The HF Spaces `spaces` watchdog listens for a "ready" signal that gradio
+# sends during launch().  If we bypass launch() and call uvicorn directly,
+# the watchdog never gets the signal and kills the process with
+# "No @spaces.GPU function detected during startup".
+demo.launch(server_name="0.0.0.0", server_port=7860)
