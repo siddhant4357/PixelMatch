@@ -1,8 +1,8 @@
 # Web Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-python-multipart==0.0.6
-gradio==4.19.2
+# Let HF/Gradio control python-multipart version (gradio needs >=0.0.9)
+python-multipart>=0.0.9
 
 # Face Detection & Recognition (InsightFace ONNX CPU)
 opencv-python-headless==4.10.0.84
@@ -13,7 +13,8 @@ onnxruntime==1.18.0
 faiss-cpu==1.9.0.post1
 
 # Image Processing
-Pillow==10.4.0
+# Gradio 4.19.2 requires Pillow>=8.0,<11.0 — do NOT pin to 11.x
+Pillow>=8.0,<11.0
 numpy==1.26.4
 
 # Utilities
@@ -25,7 +26,7 @@ reverse_geocoder==1.5.1
 groq==0.11.0
 python-dateutil==2.9.0
 
-# Database & Auth (Phase 2)
+# Database & Auth
 asyncpg==0.29.0
 sqlalchemy[asyncio]==2.0.23
 pyjwt[crypto]==2.8.0
