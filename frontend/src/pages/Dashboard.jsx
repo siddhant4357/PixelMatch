@@ -80,24 +80,24 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto px-6 py-12 max-w-6xl relative z-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-12 gap-4">
         <div>
-          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Your Events</h1>
-          <p className="text-slate-600 mt-2 text-lg">Manage and access all your event photos in one place.</p>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">Your Events</h1>
+          <p className="text-slate-600 mt-2">Manage and access all your event photos in one place.</p>
         </div>
-        <div className="flex space-x-4">
+        <div className="flex w-full sm:w-auto gap-3">
           <button 
             onClick={() => setShowJoin(true)}
-            className="px-6 py-3 bg-white/80 backdrop-blur-md border border-purple-200 text-purple-700 rounded-2xl hover:bg-white font-bold transition-all flex items-center shadow-sm hover:shadow-md"
+            className="flex-1 sm:flex-none px-5 py-3 bg-white/80 backdrop-blur-md border border-purple-200 text-purple-700 rounded-2xl hover:bg-white font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
           >
-            <Users className="w-5 h-5 mr-2" />
-            Join Event
+            <Users className="w-4 h-4" />
+            Join
           </button>
           <button 
             onClick={() => setShowCreate(true)}
-            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-2xl hover:opacity-90 font-bold transition-opacity flex items-center shadow-lg shadow-purple-500/30"
+            className="flex-1 sm:flex-none px-5 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-2xl hover:opacity-90 font-bold transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-purple-500/30"
           >
-            <Plus className="w-5 h-5 mr-2" />
+            <Plus className="w-4 h-4" />
             Create Event
           </button>
         </div>

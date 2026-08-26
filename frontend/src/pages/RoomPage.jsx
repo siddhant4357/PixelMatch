@@ -195,7 +195,7 @@ const RoomPage = () => {
         <div className="absolute -top-32 -right-32 w-96 h-96 bg-gradient-to-bl from-purple-300/40 via-pink-300/30 to-transparent rounded-full blur-3xl mix-blend-multiply animate-pulse" style={{ animationDuration: '4s' }}></div>
         <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-gradient-to-tr from-blue-300/30 via-purple-300/30 to-transparent rounded-full blur-3xl mix-blend-multiply animate-pulse" style={{ animationDuration: '6s' }}></div>
         
-        <div className="relative z-10 flex items-center space-x-8 w-full sm:w-auto">
+        <div className="relative z-10 flex flex-col sm:flex-row items-center gap-5 sm:gap-8 w-full sm:w-auto">
           <div className="relative group">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-400 to-pink-500 rounded-[2.5rem] blur-md opacity-40 group-hover:opacity-70 transition-opacity duration-500"></div>
             <div className="relative w-28 h-28 bg-gradient-to-br from-white to-purple-50 rounded-[2.5rem] flex items-center justify-center text-5xl shadow-inner border border-white overflow-hidden transform group-hover:scale-105 transition-transform duration-500">
@@ -227,28 +227,28 @@ const RoomPage = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex space-x-2 bg-white/60 backdrop-blur-md p-1.5 rounded-2xl shadow-sm border border-purple-100">
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-8">
+        <div className="flex gap-2 bg-white/60 backdrop-blur-md p-1.5 rounded-2xl shadow-sm border border-purple-100">
           <button 
             onClick={() => setActiveTab('guest')}
-            className={`px-6 py-3 rounded-xl font-bold transition-all ${activeTab === 'guest' ? 'bg-white text-purple-700 shadow-md' : 'text-slate-600 hover:text-purple-600'}`}
+            className={`flex-1 sm:flex-none px-4 sm:px-6 py-3 rounded-xl font-bold transition-all text-sm sm:text-base ${activeTab === 'guest' ? 'bg-white text-purple-700 shadow-md' : 'text-slate-600 hover:text-purple-600'}`}
           >
             My Photos
           </button>
           <button 
             onClick={() => setActiveTab('admin')}
-            className={`px-6 py-3 rounded-xl font-bold flex items-center transition-all ${activeTab === 'admin' ? 'bg-white text-purple-700 shadow-md' : 'text-slate-600 hover:text-purple-600'}`}
+            className={`flex-1 sm:flex-none px-4 sm:px-6 py-3 rounded-xl font-bold flex items-center justify-center transition-all text-sm sm:text-base ${activeTab === 'admin' ? 'bg-white text-purple-700 shadow-md' : 'text-slate-600 hover:text-purple-600'}`}
           >
-            <ShieldCheck className="w-5 h-5 mr-2" />
-            Admin Panel
+            <ShieldCheck className="w-4 h-4 mr-1.5" />
+            Admin
           </button>
         </div>
         
         <button 
           onClick={() => navigate(`/room/${roomCode}/ask-ai`)}
-          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-2xl font-bold hover:opacity-90 transition-all flex items-center shadow-lg shadow-purple-500/30"
+          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-2xl font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/30"
         >
-          <Sparkles className="w-5 h-5 mr-2" />
+          <Sparkles className="w-4 h-4" />
           Ask AI
         </button>
       </div>

@@ -38,9 +38,10 @@ class EXIFExtractor:
             if not all([lat_deg, lat_ref, lon_deg, lon_ref]):
                 return None
             
-            # Convert to decimal
-            lat = lat_deg[0] + lat_deg[1] / 60 + lat_deg[2] / 3600
-            lon = lon_deg[0] + lon_deg[1] / 60 + lon_deg[2] / 3600
+            # Convert to decimal degrees and cast to plain float
+            # (Pillow returns IFDRational/Fraction objects from GPS tags)
+            lat = float(lat_deg[0]) + float(lat_deg[1]) / 60 + float(lat_deg[2]) / 3600
+            lon = float(lon_deg[0]) + float(lon_deg[1]) / 60 + float(lon_deg[2]) / 3600
             
             # Apply direction (N/S, E/W)
             if lat_ref == 'S':
