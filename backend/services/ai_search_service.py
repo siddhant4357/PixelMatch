@@ -33,7 +33,7 @@ class AISearchService:
         # Initialize Groq client (lazy loading)
         self.groq_client = None
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
-        self.ai_model = os.getenv("AI_MODEL", "llama-3.3-70b-versatile")
+        self.ai_model = os.getenv("AI_MODEL", "llama3-70b-8192")
         
         logger.info("AI Search Service initialized")
     
@@ -364,7 +364,9 @@ Respond ONLY with valid JSON, no other text:
             'show_all': show_all,
             'confidence': 0.5
         }
-    
+        logger.info(f"[SIMPLE PARSER] Result: {result}")
+        return result
+
     def generate_ai_response(
         self,
         user_query: str,
