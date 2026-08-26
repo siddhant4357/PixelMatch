@@ -131,7 +131,7 @@ async def upload_selfie(
     faces = detector.detect_faces(image)
     
     if not faces:
-        del image, file_bytes, faces
+        del image, faces
         gc.collect()
         raise HTTPException(status_code=400, detail="No face detected in the image")
         
@@ -139,7 +139,7 @@ async def upload_selfie(
     bbox, confidence, landmarks, embedding = face
     
     if embedding is None:
-        del image, file_bytes, faces
+        del image, faces
         gc.collect()
         raise HTTPException(status_code=400, detail="Failed to extract face embedding")
         
@@ -150,7 +150,7 @@ async def upload_selfie(
     thumb_b64 = base64.b64encode(buffer).decode('utf-8')
     
     # Free large objects immediately to avoid OOM on free tier
-    del image, file_bytes, faces, face_img, thumb, buffer
+    del image, faces, face_img, thumb, buffer
     gc.collect()
     
     await user_service.save_embedding(user['id'], embedding, thumb_b64, db)
