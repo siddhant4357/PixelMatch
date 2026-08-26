@@ -2,6 +2,8 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
+gradio==4.19.2
+
 
 # Face Detection & Recognition (InsightFace ONNX CPU)
 opencv-python-headless==4.10.0.84
