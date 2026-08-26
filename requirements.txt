@@ -1,7 +1,8 @@
 # Web Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-# Let HF/Gradio control python-multipart version (gradio needs >=0.0.9)
+# gradio is installed by HF automatically via sdk_version in README.md
+# python-multipart version is controlled by gradio's requirements
 python-multipart>=0.0.9
 
 # Face Detection & Recognition (InsightFace ONNX CPU)
