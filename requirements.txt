@@ -2,6 +2,7 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
+gradio==4.19.2
 
 # Face Detection & Recognition (InsightFace ONNX CPU)
 opencv-python-headless==4.10.0.84
@@ -12,7 +13,7 @@ onnxruntime==1.18.0
 faiss-cpu==1.9.0.post1
 
 # Image Processing
-Pillow==11.0.0
+Pillow==10.4.0
 numpy==1.26.4
 
 # Utilities

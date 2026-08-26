@@ -12,14 +12,14 @@ os.chdir(backend_path)
 
 from main import app as fastapi_app
 
-# Create a minimal Gradio interface
+# Create a minimal Gradio status page
 with gr.Blocks(title="PixelMatch API") as demo:
-    gr.Markdown("# PixelMatch API is running!")
-    gr.Markdown("The backend is successfully hosted and ready to accept API requests.")
+    gr.Markdown("# PixelMatch API 🚀")
+    gr.Markdown("The backend API is running. Access the API docs at `/docs`.")
 
-# Mount the FastAPI app to the Gradio app
-# Hugging Face Spaces (Gradio SDK) will automatically look for 'app'
-app = gr.mount_gradio_app(fastapi_app, demo, path="/")
+# Mount Gradio at /ui to avoid conflicting with FastAPI's own root (/) route
+# HF Spaces will serve requests via the 'app' variable below
+app = gr.mount_gradio_app(fastapi_app, demo, path="/ui")
 
 if __name__ == "__main__":
     # Hugging Face Spaces routes traffic to port 7860
