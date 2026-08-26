@@ -24,7 +24,7 @@ const Welcome = () => {
       icon: <Camera className="w-7 h-7 text-pink-600" />,
       num: '02',
       title: 'Guests snap a selfie',
-      desc: 'Join with a room code, take one quick selfie — that's all it takes.',
+      desc: "Join with a room code, take one quick selfie — that's all it takes.",
       color: 'from-pink-100 to-orange-100',
       border: 'border-pink-200/60',
     },
