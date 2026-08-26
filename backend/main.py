@@ -35,18 +35,23 @@ async def lifespan(app: FastAPI):
     # This avoids an OOM crash where model loading + request image processing
     # both compete for memory at the same time.
     import asyncio
-    await init_db()
-    
+
+    # Wrap DB init in BaseException (catches TimeoutError, CancelledError, etc.)
+    try:
+        await init_db()
+    except BaseException as e:
+        print(f"WARNING: DB init failed (non-fatal, app will still run): {e}")
+
     # Preload InsightFace on a thread so it doesn't block the event loop
-    loop = asyncio.get_event_loop()
     try:
         print("Preloading InsightFace model at startup...")
         from models.face_detection import get_insightface_app
+        loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, get_insightface_app)
         print("InsightFace model preloaded successfully.")
-    except Exception as e:
+    except BaseException as e:
         print(f"WARNING: Could not preload InsightFace model: {e}")
-    
+
     yield
     # Shutdown (if needed)
 
