@@ -47,8 +47,10 @@ with gr.Blocks(title="PixelMatch API") as demo:
     gr.Markdown("# PixelMatch API 🚀")
     gr.Markdown("The backend API is running. Access the API docs at `/api/docs`.")
 
-# Mount our FastAPI app into gradio's internal FastAPI at /api
-demo.app.mount("/api", fastapi_app)
+# Mount the Gradio status page at /ui; FastAPI handles all other routes
+app = gr.mount_gradio_app(fastapi_app, demo, path="/ui")
 
-# Launch via gradio — sends the "ready" signal to the spaces watchdog
-demo.launch(server_name="0.0.0.0", server_port=7860)
+if __name__ == "__main__":
+    import uvicorn
+    # Hugging Face Spaces routes external traffic to port 7860
+    uvicorn.run(app, host="0.0.0.0", port=7860)
