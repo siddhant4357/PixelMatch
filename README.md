@@ -1,3 +1,13 @@
+---
+title: Pixelmatch Api
+emoji: 🦀
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 4.19.2
+app_file: app.py
+pinned: false
+---
 # PixelMatch - AI-Powered Smart Photo Search 📸🤖
 
 **Find your photos instantly using AI-powered natural language search and advanced facial recognition.**
