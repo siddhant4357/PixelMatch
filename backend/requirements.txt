@@ -14,7 +14,7 @@ onnxruntime==1.18.0
 faiss-cpu==1.9.0.post1
 
 # Image Processing
-Pillow==11.0.0
+Pillow==10.4.0
 numpy==1.26.4
 
 # Utilities
