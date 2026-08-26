@@ -1,7 +1,6 @@
 # Web Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-# Let HF/Gradio control python-multipart version (gradio needs >=0.0.9)
 python-multipart>=0.0.9
 
 # Face Detection & Recognition (InsightFace ONNX CPU)
@@ -13,7 +12,6 @@ onnxruntime==1.18.0
 faiss-cpu==1.9.0.post1
 
 # Image Processing
-# Gradio 4.19.2 requires Pillow>=8.0,<11.0 — do NOT pin to 11.x
 Pillow>=8.0,<11.0
 numpy==1.26.4
 
