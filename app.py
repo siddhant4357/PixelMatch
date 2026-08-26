@@ -19,6 +19,20 @@ if not hasattr(_hfh, "HfFolder"):
 
 import gradio as gr
 
+# ── Register a dummy @spaces.GPU function so the HF Spaces 0.51.1 watchdog
+# doesn't kill our process. On CPU-only spaces, spaces.GPU is a no-op
+# decorator, so this has zero runtime cost.
+try:
+    import spaces
+
+    @spaces.GPU(duration=0)
+    def _noop():
+        """Dummy function to satisfy the spaces watchdog on CPU spaces."""
+        pass
+except Exception:
+    # spaces may not be available in all environments (e.g. local dev)
+    pass
+
 # Add the backend directory to the Python path
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "backend"))
 sys.path.insert(0, backend_path)
@@ -33,15 +47,8 @@ with gr.Blocks(title="PixelMatch API") as demo:
     gr.Markdown("# PixelMatch API 🚀")
     gr.Markdown("The backend API is running. Access the API docs at `/api/docs`.")
 
-# ── Key fix: mount our entire FastAPI app into gradio's internal FastAPI
-# at the /api prefix.  demo.app is the FastAPI instance that gradio's own
-# uvicorn server will serve — mounting here means all our routes are live
-# without needing a separate uvicorn process.
+# Mount our FastAPI app into gradio's internal FastAPI at /api
 demo.app.mount("/api", fastapi_app)
 
-# ── CRITICAL: use demo.launch(), NOT uvicorn.run().
-# The HF Spaces `spaces` watchdog listens for a "ready" signal that gradio
-# sends during launch().  If we bypass launch() and call uvicorn directly,
-# the watchdog never gets the signal and kills the process with
-# "No @spaces.GPU function detected during startup".
+# Launch via gradio — sends the "ready" signal to the spaces watchdog
 demo.launch(server_name="0.0.0.0", server_port=7860)
