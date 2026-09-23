@@ -1,14 +1,3 @@
----
-title: Pixelmatch Api
-emoji: 📸
-colorFrom: purple
-colorTo: pink
-sdk: gradio
-sdk_version: 4.44.1
-app_file: app.py
-pinned: false
----
-
 # PixelMatch — AI-Powered Smart Photo Search 📸🤖
 
 **Find every photo you appear in — instantly — using facial recognition and natural language AI.**
@@ -19,7 +8,7 @@ Built for events, weddings, conferences, and gatherings. Upload a selfie, ask *"
 
 **⚡ Powered by InsightFace + Groq AI • Deployed on Hugging Face Spaces + Vercel ⚡**
 
-🌐 **Live at**: [pixel-match-six.vercel.app](https://pixel-match-six.vercel.app)
+🌐 **Live at**: [pixelmatch-app.vercel.app](https://pixelmatch-app.vercel.app/)
 
 </div>
 
